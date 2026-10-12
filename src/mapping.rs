@@ -1,10 +1,3 @@
-use crate::profile::Action;
-
-pub const MODES: [u8; 8] = [0x1b, 0x1e, 0x20, 0x22, 0x69, 0x6b, 0x6d, 0x6f];
-pub const KEEPALIVE: [u8; 12] = [
-    0xf0, 0x00, 0x40, 0x05, 0x00, 0x00, 0x04, 0x05, 0x00, 0x50, 0x02, 0xf7,
-];
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Player {
     Track,
@@ -68,21 +61,6 @@ impl Player {
     }
 }
 
-pub fn deck_button(note: u8) -> Option<Action> {
-    let (route, release) = match note {
-        0x0b => ("PlayPause", None),
-        0x0c => ("Cue", Some(0)),
-        0x48 => ("GridStart", None),
-        0x10 => ("LoopIn", None),
-        0x11 => ("LoopOut", None),
-        0x4d => ("Loop", None),
-        0x58 => ("TempoSync", None),
-        0x5c => ("TempoMaster", None),
-        _ => return None,
-    };
-    Some(Action::deck(route, 1, release))
-}
-
 // Use physical keys so a release is still recognised after Shift or deck changes.
 pub fn key(channel: u8, note: u8) -> (u8, u8) {
     let note = match (channel, note) {
@@ -104,38 +82,4 @@ pub fn key(channel: u8, note: u8) -> (u8, u8) {
         _ => note,
     };
     (channel, note)
-}
-
-pub fn analog_address(
-    channel: u8,
-    cc: u8,
-    selected: [usize; 2],
-    shifted: [bool; 2],
-) -> Option<String> {
-    let mixer =
-        |side: usize, route: &str| format!("/AutoPilot/Mixer/CH{}/{route}", selected[side] + 1);
-    Some(match (channel, cc) {
-        (0..=1, 0x00) => format!(
-            "/AutoPilot/Deck/{}/TempoSlider",
-            selected[channel as usize] + 1
-        ),
-        (0..=1, 0x13) => mixer(channel as usize, "Volume"),
-        (0..=1, 0x04) => mixer(channel as usize, "Trim"),
-        (0..=1, 0x07) => mixer(channel as usize, "EQ/High"),
-        (0..=1, 0x0b) => mixer(channel as usize, "EQ/Mid"),
-        (0..=1, 0x0f) => mixer(channel as usize, "EQ/Low"),
-        (6, 0x17..=0x18) => {
-            let side = (cc - 0x17) as usize;
-            mixer(
-                side,
-                if shifted[side] {
-                    "Filter/Resonance"
-                } else {
-                    "Filter"
-                },
-            )
-        }
-        (6, 0x0c) => "/AutoPilot/Header/CueMix".into(),
-        _ => return None,
-    })
 }

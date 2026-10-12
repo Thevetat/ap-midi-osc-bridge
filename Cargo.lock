@@ -238,7 +238,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "flx4-pilot"
+name = "ap-midi-osc-bridge"
 version = "0.3.4"
 dependencies = [
  "anyhow",

@@ -1,8 +1,8 @@
 [package]
-name = "flx4-pilot"
+name = "ap-midi-osc-bridge"
 version = "0.3.4"
 edition = "2021"
-description = "Native DDJ-FLX4 MIDI to AUTO/PILOT OSC bridge"
+description = "Profile-driven MIDI to AUTO/PILOT OSC bridge"
 license = "MIT"
 repository = "https://github.com/Thevetat/flx4-pilot"
 

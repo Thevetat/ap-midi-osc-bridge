@@ -1,0 +1,148 @@
+{
+  "version": 2,
+  "name": "Pioneer DDJ-FLX4",
+  "protocol": "flx4",
+  "inputs": ["DDJ-FLX4"],
+  "outputs": ["DDJ-FLX4"],
+  "protocol_config": {
+    "buttons": [
+      {"channel":0,"note":63,"type":"shift"},
+      {"channel":1,"note":63,"type":"shift"},
+      {"channel":0,"note":27,"type":"bank","bank":0}, {"channel":1,"note":27,"type":"bank","bank":0},
+      {"channel":0,"note":30,"type":"bank","bank":1}, {"channel":1,"note":30,"type":"bank","bank":1},
+      {"channel":0,"note":32,"type":"bank","bank":2}, {"channel":1,"note":32,"type":"bank","bank":2},
+      {"channel":0,"note":34,"type":"bank","bank":3}, {"channel":1,"note":34,"type":"bank","bank":3},
+      {"channel":0,"note":105,"type":"bank","bank":4}, {"channel":1,"note":105,"type":"bank","bank":4},
+      {"channel":0,"note":107,"type":"bank","bank":5}, {"channel":1,"note":107,"type":"bank","bank":5},
+      {"channel":0,"note":109,"type":"bank","bank":6}, {"channel":1,"note":109,"type":"bank","bank":6},
+      {"channel":0,"note":111,"type":"bank","bank":7}, {"channel":1,"note":111,"type":"bank","bank":7},
+      {"channel":0,"note":84,"type":"toggle","address":"/AutoPilot/Mixer/CH{deck}/Cue"},
+      {"channel":1,"note":84,"type":"toggle","address":"/AutoPilot/Mixer/CH{deck}/Cue"},
+      {"channel":6,"note":104,"side":0,"type":"select_deck"}, {"channel":6,"note":122,"side":1,"type":"select_deck"},
+      {"channel":6,"note":70,"side":0,"type":"browse","address":"/AutoPilot/Browser/L{deck}"},
+      {"channel":6,"note":71,"side":1,"type":"browse","address":"/AutoPilot/Browser/L{deck}"},
+      {"channel":6,"note":65,"type":"browse","address":"/AutoPilot/Browser/Enter"},
+      {"channel":6,"note":66,"type":"browse","address":"/AutoPilot/Browser/Back"},
+      {"channel":0,"note":11,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/PlayPause","press":1}},
+      {"channel":1,"note":11,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/PlayPause","press":1}},
+      {"channel":0,"note":12,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/Cue","press":1,"release":0}},
+      {"channel":1,"note":12,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/Cue","press":1,"release":0}},
+      {"channel":0,"note":72,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/GridStart","press":1}},
+      {"channel":1,"note":72,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/GridStart","press":1}},
+      {"channel":0,"note":16,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/LoopIn","press":1}},
+      {"channel":1,"note":16,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/LoopIn","press":1}},
+      {"channel":0,"note":17,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/LoopOut","press":1}},
+      {"channel":1,"note":17,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/LoopOut","press":1}},
+      {"channel":0,"note":77,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/Loop","press":1}},
+      {"channel":1,"note":77,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/Loop","press":1}},
+      {"channel":0,"note":88,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/TempoSync","press":1}},
+      {"channel":1,"note":88,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/TempoSync","press":1}},
+      {"channel":0,"note":92,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/TempoMaster","press":1}},
+      {"channel":1,"note":92,"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/TempoMaster","press":1}}
+    ],
+    "analog": [
+      {"channel":0,"cc":0,"address":"/AutoPilot/Deck/{deck}/TempoSlider","bipolar":true},
+      {"channel":1,"cc":0,"address":"/AutoPilot/Deck/{deck}/TempoSlider","bipolar":true},
+      {"channel":0,"cc":19,"address":"/AutoPilot/Mixer/CH{deck}/Volume"},
+      {"channel":1,"cc":19,"address":"/AutoPilot/Mixer/CH{deck}/Volume"},
+      {"channel":0,"cc":4,"address":"/AutoPilot/Mixer/CH{deck}/Trim"},
+      {"channel":1,"cc":4,"address":"/AutoPilot/Mixer/CH{deck}/Trim"},
+      {"channel":0,"cc":7,"address":"/AutoPilot/Mixer/CH{deck}/EQ/High"},
+      {"channel":1,"cc":7,"address":"/AutoPilot/Mixer/CH{deck}/EQ/High"},
+      {"channel":0,"cc":11,"address":"/AutoPilot/Mixer/CH{deck}/EQ/Mid"},
+      {"channel":1,"cc":11,"address":"/AutoPilot/Mixer/CH{deck}/EQ/Mid"},
+      {"channel":0,"cc":15,"address":"/AutoPilot/Mixer/CH{deck}/EQ/Low"},
+      {"channel":1,"cc":15,"address":"/AutoPilot/Mixer/CH{deck}/EQ/Low"},
+      {"channel":6,"cc":23,"side":0,"address":"/AutoPilot/Mixer/CH{deck}/Filter1","shifted_address":"/AutoPilot/Mixer/CH{deck}/Filter2"},
+      {"channel":6,"cc":24,"side":1,"address":"/AutoPilot/Mixer/CH{deck}/Filter1","shifted_address":"/AutoPilot/Mixer/CH{deck}/Filter2"},
+      {"channel":6,"cc":12,"address":"/AutoPilot/Header/CueMix","direct":true}
+    ],
+    "browser_encoder":{"channel":6,"cc":64,"up":"/AutoPilot/Browser/Up","down":"/AutoPilot/Browser/Down"},
+    "leds":[
+      {"address":"/AutoPilot/Deck/{deck}/Playing","channel":0,"kind":"switch","number":11},
+      {"address":"/AutoPilot/Deck/{deck}/Playing","channel":1,"kind":"switch","number":11},
+      {"address":"/AutoPilot/Deck/{deck}/Sync","channel":0,"kind":"switch","number":88},
+      {"address":"/AutoPilot/Deck/{deck}/Sync","channel":1,"kind":"switch","number":88},
+      {"address":"/AutoPilot/Deck/{deck}/Loop","channel":0,"kind":"switch","number":77},
+      {"address":"/AutoPilot/Deck/{deck}/Loop","channel":1,"kind":"switch","number":77},
+      {"address":"/AutoPilot/Mixer/CH{deck}/Cue","channel":0,"kind":"switch","number":84},
+      {"address":"/AutoPilot/Mixer/CH{deck}/Cue","channel":1,"kind":"switch","number":84},
+      {"address":"/AutoPilot/Mixer/CH{deck}/Meter","channel":0,"kind":"meter","number":2},
+      {"address":"/AutoPilot/Mixer/CH{deck}/Meter","channel":1,"kind":"meter","number":2}
+    ],
+    "pad_wiring":{"channels":[7,8,9,10],"bank_notes":[27,30,32,34,105,107,109,111]},
+    "pads":{
+      "version":1,
+      "banks":[
+        {"name":"Hot cues","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/Cue1","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue2","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue3","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue4","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/Cue5","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue6","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue7","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue8","press":1}],
+          "shifted_pads":[null,null,null,null,null,null,null,null],
+          "for_player":{"arrangement":{"name":"Markers / pages","pads":[
+            {"address":"/AutoPilot/Deck/{deck}/Cue1","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue2","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue3","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue4","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue5","press":1},
+            {"address":"/AutoPilot/Deck/{deck}/GridStart","press":1},{"address":"/AutoPilot/Deck/{deck}/ControlPagePrevious","press":1},{"address":"/AutoPilot/Deck/{deck}/ControlPageNext","press":1}],"shifted_pads":[null,null,null,null,null,null,null,null]}}},
+        {"name":"Slip loops","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/SlipLoop/ThirtySecond","press":1,"release":0,"slip_timing":"selected"},
+          {"address":"/AutoPilot/Deck/{deck}/SlipLoop/Sixteenth","press":1,"release":0,"slip_timing":"selected"},
+          {"address":"/AutoPilot/Deck/{deck}/SlipLoop/Eighth","press":1,"release":0,"slip_timing":"selected"},
+          {"address":"/AutoPilot/Deck/{deck}/SlipLoop/Quarter","press":1,"release":0,"slip_timing":"selected"},
+          {"address":"/AutoPilot/Deck/{deck}/SlipLoop/Half","press":1,"release":0,"slip_timing":"selected"},null,
+          {"address":"/AutoPilot/Deck/{deck}/SlipDotted","press":1,"toggle":true},
+          {"address":"/AutoPilot/Deck/{deck}/SlipTriplet","press":1,"toggle":true}]},
+        {"name":"Beat jumps","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-1},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-2},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":2},
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-4},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":4},
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-8},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":8}],
+          "shifted_pads":[
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-16},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":16},
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-32},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":32},
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-64},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":64},
+          {"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":-128},{"address":"/AutoPilot/Deck/{deck}/BeatSkip","press":128}]},
+        {"name":"Sampler lanes","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":2},{"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":3},
+          {"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":4},{"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":5},
+          {"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":6},{"address":"/AutoPilot/Deck/{deck}/Sampler/Lane","press":7}]},
+        {"name":"Pitch / formant","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/PitchStep","press":-12},{"address":"/AutoPilot/Deck/{deck}/PitchStep","press":-1},
+          {"address":"/AutoPilot/Deck/{deck}/PitchStep","press":1},{"address":"/AutoPilot/Deck/{deck}/PitchStep","press":12},
+          {"address":"/AutoPilot/Deck/{deck}/PitchReset","press":1},{"address":"/AutoPilot/Deck/{deck}/FormantDown","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/FormantReset","press":1},{"address":"/AutoPilot/Deck/{deck}/FormantUp","press":1}]},
+        {"name":"Loop tools","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/LoopMoveBeat","press":-1},{"address":"/AutoPilot/Deck/{deck}/LoopMoveBeat","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/LoopMoveBar","press":-1},{"address":"/AutoPilot/Deck/{deck}/LoopMoveBar","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/LoopMoveBar","press":-4},{"address":"/AutoPilot/Deck/{deck}/LoopMoveBar","press":4},
+          {"address":"/AutoPilot/Deck/{deck}/LoopIn","press":1},{"address":"/AutoPilot/Deck/{deck}/LoopOut","press":1}]},
+        {"name":"Deck tools","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/SpeedHalf","press":1,"release":0},
+          {"address":"/AutoPilot/Deck/{deck}/SpeedDouble","press":1,"release":0},
+          {"address":"/AutoPilot/Deck/{deck}/Reverse","press":1,"release":0},
+          {"address":"/AutoPilot/Deck/{deck}/GridStart","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/PhaseMinus","press":1,"release":0},
+          {"address":"/AutoPilot/Deck/{deck}/PhasePlus","press":1,"release":0},
+          {"address":"/AutoPilot/Deck/{deck}/PhaseReset","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/Speed","press":1}],
+          "for_player":{"sampler":{"name":"Steps 1–8 (Shift clears)","pads":[
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step1/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step2/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step3/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step4/Enabled","press":1},
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step5/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step6/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step7/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step8/Enabled","press":1}],"shifted_pads":[
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step1/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step2/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step3/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step4/Enabled","press":0},
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step5/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step6/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step7/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step8/Enabled","press":0}]}}},
+        {"name":"Navigation / locks","pads":[
+          {"address":"/AutoPilot/Deck/{deck}/WaveformZoomOut","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/WaveformZoomIn","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/ControlPagePrevious","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/ControlPageNext","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/CueSlip","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/CueSlip","press":0},
+          {"address":"/AutoPilot/Deck/{deck}/PitchPreserve","press":1},
+          {"address":"/AutoPilot/Deck/{deck}/PitchPreserve","press":0}],
+          "for_player":{"sampler":{"name":"Steps 9–16 (Shift clears)","pads":[
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step9/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step10/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step11/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step12/Enabled","press":1},
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step13/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step14/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step15/Enabled","press":1},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step16/Enabled","press":1}],"shifted_pads":[
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step9/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step10/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step11/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step12/Enabled","press":0},
+            {"address":"/AutoPilot/Deck/{deck}/Sampler/Step13/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step14/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step15/Enabled","press":0},{"address":"/AutoPilot/Deck/{deck}/Sampler/Step16/Enabled","press":0}]}}}
+      ]
+    }
+  }
+}

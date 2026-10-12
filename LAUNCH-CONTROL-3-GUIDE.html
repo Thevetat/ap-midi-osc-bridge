@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launch Control 3 — AP MIDI OSC Bridge control guide</title>
+<style>
+@page { size: A4 landscape; margin: 10mm; }
+* { box-sizing: border-box; }
+body { margin: 0; color: #162532; background: #e9eef1; font: 9pt/1.3 "Segoe UI", Arial, sans-serif; }
+.sheet { width: 297mm; min-height: 210mm; margin: 18px auto; padding: 10mm; background: white; }
+header { display: flex; justify-content: space-between; align-items: end; border-bottom: 3px solid #162532; padding-bottom: 3mm; margin-bottom: 3mm; }
+h1 { margin: 0; font-size: 27pt; letter-spacing: -1px; }
+h1 span, a { color: #087d85; }
+h2 { margin: 0 0 2mm; font-size: 15pt; }
+h3 { margin: 0; font-size: 10pt; }
+p { margin: 2mm 0; }
+small, .muted { color: #4a6170; }
+.meta { text-align: right; font-size: 8.5pt; }
+.rule { background: #fff2d9; border-left: 4px solid #cf7b00; padding: 2.5mm 3mm; margin: 3mm 0; }
+.controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 3mm 0; }
+.control { border-left: 3px solid #087d85; padding-left: 2mm; }
+.bank { border: 1px solid #b5c6ce; border-radius: 2mm; overflow: hidden; margin-top: 3mm; break-inside: avoid; }
+.bank-title { background: #162532; color: white; padding: 2mm 3mm; display: flex; justify-content: space-between; align-items: baseline; }
+.bank-title small { color: #bdebee; font-size: 8pt; }
+.alt .bank-title { background: #265b64; }
+.surface { display: grid; grid-template-columns: 14mm repeat(8, 1fr); gap: 1.5mm; padding: 2mm; }
+.row-label { align-self: center; font-size: 7.5pt; font-weight: bold; color: #4a6170; }
+.encoder { border: 1px solid #a7bcc5; border-radius: 2mm; min-height: 13mm; text-align: center; padding: 1mm; background: #f4f8f9; display: flex; flex-direction: column; justify-content: center; }
+.encoder b { font-size: 10pt; }
+.encoder small { font-size: 7.5pt; }
+.encoder .position { font-size: 6.5pt; color: #4a6170; }
+.idle { border-style: dashed; background: white; color: #6a7e88; }
+.browser { background: #e5f3f3; border-color: #087d85; }
+.buttons { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2mm; margin: 2mm 0; }
+.button { border: 1px solid #b5c6ce; border-top: 3px solid #b7434b; border-radius: 1mm; padding: 2mm 1mm; text-align: center; background: #fcf0f1; }
+.button.cue { border-top-color: #087d85; background: #e5f3f3; }
+.button small { display: block; }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin-top: 2mm; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 7mm; }
+.topic { margin-bottom: 4mm; break-inside: avoid; }
+table { border-collapse: collapse; width: 100%; font-size: 8.5pt; margin: 2mm 0; }
+th, td { text-align: left; vertical-align: top; padding: 1.5mm 2mm; border-bottom: 1px solid #d9e2e6; }
+th { background: #f4f8f9; }
+ol, ul { margin: 2mm 0; padding-left: 5mm; }
+li { margin: 1.5mm 0; }
+code { font-size: 8pt; }
+.references { font-size: 8pt; }
+footer { margin-top: auto; padding-top: 2mm; border-top: 1px solid #b5c6ce; display: flex; justify-content: space-between; font-size: 7.5pt; color: #4a6170; }
+.page-body { flex: 1; }
+.sheet { display: flex; flex-direction: column; }
+@media print {
+ body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+ .sheet { width: auto; min-height: 189mm; margin: 0; padding: 0; }
+ .sheet + .sheet { break-before: page; }
+}
+@media screen and (max-width: 900px) {
+ .sheet { width: 100%; min-height: auto; padding: 5mm; }
+ header { align-items: start; gap: 3mm; }
+ h1 { font-size: 22pt; }
+ .two, .legend { grid-template-columns: 1fr; }
+ .controls { grid-template-columns: repeat(2, 1fr); }
+ .bank { overflow-x: auto; }
+ .surface, .bank-title { min-width: 700px; }
+ .buttons { grid-template-columns: repeat(4, 1fr); }
+ footer { margin-top: 4mm; }
+}
+</style>
+</head>
+<body>
+<section class="sheet">
+<div class="page-body">
+<header><div><small>COMPACT NOVATION LAUNCH CONTROL 3 → AUTO/PILOT · AP MIDI OSC BRIDGE</small><h1>Launch Control <span>3</span></h1></div><div class="meta"><b>PERFORMANCE MAP · WORKING SOURCE</b><br>16 endless encoders · 8 buttons · no faders<br>Compact LC3 — not Launch Control XL 3</div></header>
+<div class="rule"><b>FEEDBACK REQUIRED.</b> AP OSC input: <b>9090</b> · feedback: <b>127.0.0.1:9096</b> · <b>Toggle All</b> checked. Missing feedback blocks EQ/filter pickup and Mute/Cue toggles.</div>
+<div class="controls">
+<div class="control"><b>FUNCTION · BUTTON LAYER</b><br>Toggle Hot Cues ↔ Mixer<br>Startup: Hot Cues / Deck 1</div>
+<div class="control"><b>TRACK ◀ / ▶ · DECK 1–4</b><br>Select hot-cue target · no wrap<br>Screen shows deck and button layer</div>
+<div class="control"><b>BROWSER · TOP RIGHT</b><br>Clockwise: Down · anticlockwise: Up<br>Same encoder in both modes</div>
+<div class="control"><b>EQ / FILTER ENCODERS</b><br>Mode + Function (DAW)<br>Always fixed mixer CH1–4</div>
+</div>
+<p><b>Read each row left → right, positions 1–8.</b> The two diagrams are alternative modes of the same surface. “—” means unassigned.</p>
+<article class="bank">
+<div class="bank-title"><h3>MODE 1 · DAW MIXER → EQ</h3><small>Console mode: eq · startup requests this mode</small></div>
+<div class="surface">
+<div class="row-label">TOP</div>
+<div class="encoder"><span class="position">1</span><b>LOW</b><small>CH1</small></div>
+<div class="encoder"><span class="position">2</span><b>MID</b><small>CH1</small></div>
+<div class="encoder"><span class="position">3</span><b>HIGH</b><small>CH1</small></div>
+<div class="encoder"><span class="position">4</span><b>LOW</b><small>CH2</small></div>
+<div class="encoder"><span class="position">5</span><b>MID</b><small>CH2</small></div>
+<div class="encoder"><span class="position">6</span><b>HIGH</b><small>CH2</small></div>
+<div class="encoder idle"><span class="position">7</span><b>—</b><small>unassigned</small></div>
+<div class="encoder browser"><span class="position">8</span><b>BROWSE</b><small>Up / Down</small></div>
+<div class="row-label">BOTTOM</div>
+<div class="encoder"><span class="position">1</span><b>LOW</b><small>CH3</small></div>
+<div class="encoder"><span class="position">2</span><b>MID</b><small>CH3</small></div>
+<div class="encoder"><span class="position">3</span><b>HIGH</b><small>CH3</small></div>
+<div class="encoder"><span class="position">4</span><b>LOW</b><small>CH4</small></div>
+<div class="encoder"><span class="position">5</span><b>MID</b><small>CH4</small></div>
+<div class="encoder"><span class="position">6</span><b>HIGH</b><small>CH4</small></div>
+<div class="encoder idle"><span class="position">7</span><b>—</b><small>unassigned</small></div>
+<div class="encoder idle"><span class="position">8</span><b>—</b><small>unassigned</small></div>
+</div></article>
+<article class="bank alt">
+<div class="bank-title"><h3>MODE 2 · DAW CONTROL → FILTERS</h3><small>Console mode: filter · filter input routes unconfirmed</small></div>
+<div class="surface">
+<div class="row-label">TOP</div>
+<div class="encoder"><span class="position">1</span><b>FILTER 1</b><small>CH1</small></div>
+<div class="encoder"><span class="position">2</span><b>FILTER 2</b><small>CH1</small></div>
+<div class="encoder"><span class="position">3</span><b>FILTER 1</b><small>CH2</small></div>
+<div class="encoder"><span class="position">4</span><b>FILTER 2</b><small>CH2</small></div>
+<div class="encoder idle"><span class="position">5</span><b>—</b><small>unassigned</small></div>
+<div class="encoder idle"><span class="position">6</span><b>—</b><small>unassigned</small></div>
+<div class="encoder idle"><span class="position">7</span><b>—</b><small>unassigned</small></div>
+<div class="encoder browser"><span class="position">8</span><b>BROWSE</b><small>Up / Down</small></div>
+<div class="row-label">BOTTOM</div>
+<div class="encoder"><span class="position">1</span><b>FILTER 1</b><small>CH3</small></div>
+<div class="encoder"><span class="position">2</span><b>FILTER 2</b><small>CH3</small></div>
+<div class="encoder"><span class="position">3</span><b>FILTER 1</b><small>CH4</small></div>
+<div class="encoder"><span class="position">4</span><b>FILTER 2</b><small>CH4</small></div>
+<div class="encoder idle"><span class="position">5</span><b>—</b><small>unassigned</small></div>
+<div class="encoder idle"><span class="position">6</span><b>—</b><small>unassigned</small></div>
+<div class="encoder idle"><span class="position">7</span><b>—</b><small>unassigned</small></div>
+<div class="encoder idle"><span class="position">8</span><b>—</b><small>unassigned</small></div>
+</div></article>
+<p><b>DEFAULT · HOT CUES</b> — bottom buttons 1–8 launch the selected deck’s cue slots. Function toggles to/from the Mixer layer below.</p>
+<div class="buttons">
+<div class="button" style="border-top-color:#FF5D73"><b>HOT CUE 1</b></div><div class="button" style="border-top-color:#FF9F43"><b>HOT CUE 2</b></div>
+<div class="button" style="border-top-color:#FFE66D"><b>HOT CUE 3</b></div><div class="button" style="border-top-color:#72EFB5"><b>HOT CUE 4</b></div>
+<div class="button" style="border-top-color:#48CAE4"><b>HOT CUE 5</b></div><div class="button" style="border-top-color:#5E8CFF"><b>HOT CUE 6</b></div>
+<div class="button" style="border-top-color:#A875FF"><b>HOT CUE 7</b></div><div class="button" style="border-top-color:#FF66C4"><b>HOT CUE 8</b></div>
+</div>
+<p><b>FUNCTION → MIXER LAYER</b> — existing mute/headphone-cue controls, unchanged by Track selection.</p>
+<div class="buttons">
+<div class="button"><small>1</small><b>MUTE CH1</b></div><div class="button"><small>2</small><b>MUTE CH2</b></div><div class="button"><small>3</small><b>MUTE CH3</b></div><div class="button"><small>4</small><b>MUTE CH4</b></div>
+<div class="button cue"><small>5</small><b>CUE CH1</b></div><div class="button cue"><small>6</small><b>CUE CH2</b></div><div class="button cue"><small>7</small><b>CUE CH3</b></div><div class="button cue"><small>8</small><b>CUE CH4</b></div>
+</div>
+<div class="legend"><div><b>Hot-cue colours:</b> fixed Candy Pop RGB palette, NOT populated-cue indicators. Empty slots can set cues. Function: purple = Hot Cues; cyan = Mixer.</div><div><b>Mixer LEDs:</b> red = mute; cyan = headphone cue. Bright/dim follows AP on/off feedback; grey = unknown. Knobs are unchanged by the button layer.</div></div>
+</div>
+<footer><span>Default mapping: profiles/launch-control-3.json · No transport, load or fader assignments</span><span>Hardware / AP behaviour unverified · 1 / 2</span></footer>
+</section>
+<section class="sheet">
+<div class="page-body">
+<header><div><small>LAUNCH CONTROL 3 · AP MIDI OSC BRIDGE · EDITABLE CONTROLLER PROFILE</small><h1>Setup &amp; <span>feedback</span></h1></div><div class="meta">One bridge · shared AP connection<br>Use alongside FLX4 or on its own</div></header>
+<div class="two">
+<div>
+<section class="topic"><h2>1 · Configure AUTO/PILOT</h2>
+<table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>
+<tr><td>OSC input / listen</td><td><b>Enabled · 9090</b></td></tr>
+<tr><td>OSC feedback destination</td><td><b>127.0.0.1 · 9096</b></td></tr>
+<tr><td>Feedback update rate</td><td><b>30 Hz</b></td></tr>
+<tr><td>Feedback subscriptions</td><td><b>Toggle All → all checked</b></td></tr>
+<tr><td>Browser Mode</td><td><b>CONTROL MODE</b></td></tr>
+<tr><td>Direct AP MIDI inputs</td><td><b>Disable LC3</b> and any other bridged controller</td></tr>
+</tbody></table>
+<p>For LC3-only selective feedback, enable CH1–4 <code>EQ/Low</code>, <code>EQ/Mid</code>, <code>EQ/High</code>, <code>Filter1</code>, <code>Filter2</code>, <code>Mute</code> and <code>Cue</code>. The FLX4 needs additional subscriptions.</p>
+</section>
+<section class="topic"><h2>2 · Use the DAW USB ports</h2>
+<p>Close other apps holding LC3’s DAW ports. On Windows the documented DAW connection is <b>USB MIDI port 2</b>, not Main.</p>
+<table><tbody><tr><th>Input</th><td><code>MIDIIN2 (LC3 1 MIDI)</code></td></tr><tr><th>Output</th><td><code>MIDIOUT2 (LC3 1 MIDI)</code></td></tr></tbody></table>
+<p>These are the development machine’s names. Run <code>ap-midi-osc-bridge.exe --list</code> to list yours without sending MIDI. If different, edit <code>inputs</code> / <code>outputs</code> in <code>profiles/launch-control-3.json</code>. Input/output indices are independent; selectors must match uniquely.</p>
+<p><b>Do not select:</b> Main <code>LC3 1 MIDI</code> or an LCXL3 port.</p>
+</section>
+<section class="topic"><h2>3 · Start the shared bridge</h2>
+<p>Keep <code>profiles/</code> beside the current executable. The bridge automatically matches connected controllers to their profiles; absent devices are skipped. Connect only LC3 for LC3-only use. No device-list config or Components remapping is needed.</p>
+<p>On Windows, double-click <b>ap-midi-osc-bridge.exe</b>; on macOS/Linux, run <code>./ap-midi-osc-bridge</code>. No command launcher is needed. <b>Run only one bridge instance.</b></p>
+<p>Startup requests DAW Mixer (EQ), with the <b>Hot Cues</b> button layer and <b>Deck 1</b>. The controller must report a mapped DAW mode before controls become active. No firmware or stored Custom Modes are overwritten.</p>
+</section>
+</div>
+<div>
+<section class="topic"><h2>Modes &amp; encoder pickup</h2>
+<p>Press/hold <b>Mode</b> and press <b>Function (DAW)</b> to switch DAW Mixer ↔ DAW Control, then exit mode selection. Other device modes are not mapped.</p>
+<p>A confirmed change of mode re-arms pickup. AP’s reported EQ/filter positions are sent back to the endless encoders over the DAW output, so they can start from the current value rather than jump blindly. <b>No position feedback → no EQ/filter output.</b></p>
+<p><b>Function alone</b> toggles the bottom row Hot Cues ↔ Mixer without changing the EQ/filter mode or encoder pickup. Track ◀/▶ selects Deck 1–4 for hot cues, independently of FLX4. The screen shows deck/layer; arrows stop at the ends.</p>
+<p>Knobs and Mixer-layer buttons remain fixed to <b>CH1–4</b>, regardless of either controller’s deck selection. These are AP’s main mixer channels, not arrangement-internal trims.</p>
+</section>
+<section class="topic"><h2>Browser &amp; button behaviour</h2>
+<p><b>Top encoder 8:</b> clockwise moves Down; anticlockwise moves Up. The bridge recentres its absolute value after turns for continuous browsing. After a mode change, the first non-echo report establishes a baseline and may consume the first turn.</p>
+<p>Matching reports can be suppressed within a 500 ms echo window, including an identical physical report. This is not a MIDI acknowledgment guarantee.</p>
+<p><b>Hot Cues:</b> one tap per press, no held preview. Colours match the supplied Candy Pop palette, but do not show cue existence or follow later AP colour changes. Empty slots can create cues; AP’s existing CueMomentary/Slip settings are not changed. Track routes can act as arrangement markers, not clip/sampler cues.</p>
+<p><b>Mixer-layer Mute / headphone Cue:</b> a press sends the opposite of AP’s confirmed 0/1 state. LEDs follow feedback, not a guessed local toggle. Grey/unknown means the bridge will not guess a switch state.</p>
+<p>LC3 has no mapped Browser Enter, Back or Load. Use AP or the FLX4 for those actions.</p>
+</section>
+<div class="rule"><b>FILTER ROUTES ARE NOT CONFIRMED.</b><br><code>/AutoPilot/Mixer/CHn/Filter1</code> and <code>Filter2</code> are inferred from AP’s 0.1.845 change note and mixer path convention. Missing feedback blocks pickup; feedback alone does not prove the input route is writable.</div>
+<section class="topic"><h2>If controls do nothing</h2>
+<p>Check the console mode, DAW input <b>and</b> output selection, AP feedback destination/subscriptions, and Browser CONTROL MODE. The bridge does not configure AP for you.</p>
+<p>Keep the console open. <b>Ctrl+C</b> requests standalone mode and releases held actions best-effort. Device attach/detach is handled while running; check console errors. Restart after restarting AP or uncertain state. Force-kills and UDP loss cannot guarantee cleanup.</p>
+</section>
+</div>
+</div>
+<div class="references"><b>Local references:</b> <a href="README.md">README.md</a> → Get started / Supported mappings / Limits; <a href="profiles/launch-control-3.json">profiles/launch-control-3.json</a> → modes / layers / deck_feedback / bindings / feedback; <a href="PROFILES.md">PROFILES.md</a> → Declarative JSON / Protocol references.<br><b>Scope:</b> current default profile, not a claim about an older FLX4 Pilot package. Hardware and AP end-to-end operation remain unverified. Edited profiles may differ from this sheet.</div>
+</div>
+<footer><span>Independent project · Not affiliated with Novation / AlphaTheta / AUTO/PILOT</span><span>Setup reference · Feedback required · 2 / 2</span></footer>
+</section>
+</body>
+</html>

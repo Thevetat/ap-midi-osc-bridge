@@ -1,6 +1,6 @@
-# Mapping — 0.3.4
+# Controller mappings
 
-Default control assignments for the DDJ-FLX4 → AUTO/PILOT bridge. The bridge does not modify AP mapping files.
+The default DDJ-FLX4 → AUTO/PILOT controls below come from editable [`profiles/flx4.json`](profiles/flx4.json). The compact LC3 layout follows at the end. These are defaults; edit the JSON for other assignments. The bridge does not modify AP mapping files. See [PROFILES.md](PROFILES.md) for the format.
 
 `D` means the selected deck; `CHD` its main mixer channel. Addresses below start `/AutoPilot/`.
 
@@ -15,7 +15,9 @@ Selection is independent per side. It changes the bridge's target, not AP's play
 
 Supported deck actions and pads follow the selection. Mixer controls address its corresponding **main channel**: selecting Deck 3 makes the left channel fader control `Mixer/CH3/Volume`, not an arrangement's internal track trim. LEDs/meters follow the selected deck/channel. Normal LOAD targets the selected deck; Shift+LOAD never loads.
 
-The console/window title is the deck-selection reference. Hardware mode lights identify pad banks, not deck numbers. Selection requests fresh feedback and re-arms mixer/tempo pickup; controls can wait until the hardware crosses the reported value. Per-deck pad banks and repeat timing are recalled when returning to a deck. Existing held actions retain their original release destination.
+The console is the deck-selection reference. Hardware mode lights identify pad banks, not deck numbers. Selection requests fresh feedback and re-arms mixer/tempo pickup; controls can wait until the hardware crosses the reported value. Per-deck pad banks and repeat timing are recalled when returning to a deck. Existing held actions retain their original release destination.
+
+Once picked up, a physical control stays latched through ordinary AP feedback, which can lag behind movement. Another control in this bridge taking over the same route, a relevant deck/layer change, or invalid feedback re-arms pickup. AP feedback has no writer identity, so mouse-only changes do not automatically release the latch. Normal console output reports selection/bank changes; pickup counters require `--verbose`.
 
 Restart selects decks 1/2. **Shift+mode changes a bank, not the selected deck.** Browser navigation and headphone MIX remain shared.
 
@@ -34,7 +36,7 @@ Restart selects decks 1/2. **Shift+mode changes a bank, not the selected deck.**
 | Tempo fader | `Deck/D/TempoSlider` | 14-bit MIDI → bipolar float −1..+1; 0 native tempo; pickup |
 | Channel fader / trim | `Mixer/CHD/Volume`, `Trim` | 14-bit normalized, pickup |
 | High / Mid / Low | `Mixer/CHD/EQ/High`, `Mid`, `Low` | 14-bit normalized, pickup |
-| Filter / same-side Shift+filter | `Mixer/CHD/Filter`, `Filter/Resonance` | 14-bit normalized, pickup |
+| Filter / same-side Shift+filter | `Mixer/CHD/Filter1`, `Filter2` | 14-bit normalized, pickup; full input paths inferred from AP 0.1.845 change note, not yet confirmed against AP (behavior depends on filter type) |
 | Headphone CUE | `Mixer/CHD/Cue` | Toggle from confirmed feedback |
 | Headphone MIX | `Header/CueMix` | Shared/direct, not deck-switched |
 | Browse rotation | `Browser/Up`, `Down` | Signed relative steps; counterclockwise up |
@@ -42,9 +44,9 @@ Restart selects decks 1/2. **Shift+mode changes a bank, not the selected deck.**
 
 Browse rotation uses channel 7 CC64 signed relative counts, not the mixer-knob decoder. AP documents hardware navigation under **Settings → General → Browser Mode → CONTROL MODE** (§4.6).
 
-Each side tracks its own Shift. Cutoff/resonance pickup resets on Shift press/release; the next full knob report establishes a baseline. Enable both feedback subscriptions. Mixer knobs address main mixer channels, not arrangement-internal track trims. AP may require the corresponding controls to be visible.
+Each side tracks its own Shift. Filter1/Filter2 pickup resets on Shift press/release; the next full knob report establishes a baseline. Enable both feedback subscriptions. Mixer knobs address main mixer channels, not arrangement-internal track trims. AP may require the corresponding controls to be visible.
 
-**Tempo contract:** requires AP's bipolar `TempoSlider` input AND feedback: **−1 minimum, 0 native tempo, +1 maximum**. Output maps physical 0–1 to `2 * position - 1`, with the two central MIDI codes sending exact 0. Feedback maps back to `(value + 1) / 2` for pickup; mixer values remain 0–1. Non-finite/out-of-range tempo feedback is rejected and re-arms pickup. Missing feedback blocks normal tempo output. There is no automatic detection or support for legacy 0–1 tempo APIs. `--direct-tempo` bypasses pickup but still sends bipolar values and can cause jumps.
+**Tempo contract:** requires AP's bipolar `TempoSlider` input AND feedback: **−1 minimum, 0 native tempo, +1 maximum**. Output maps physical 0–1 to `2 * position - 1`, with the two central MIDI codes sending exact 0. Feedback maps back to `(value + 1) / 2` for pickup; mixer values remain 0–1. Non-finite/out-of-range tempo feedback is rejected and re-arms pickup. Missing feedback blocks normal tempo output. There is no automatic detection or support for legacy 0–1 tempo APIs.
 
 ## Pad banks
 
@@ -120,13 +122,34 @@ Clip `Loop` means restart-at-end, not the track loop toggle; the bridge does not
 
 ## Feedback, profiles and safety
 
-In AP's OSC Feedback settings, use **Toggle All** so all subscriptions are checked, including **TempoSlider**. Unused feedback is ignored; [DEVELOPMENT.md](DEVELOPMENT.md#runtime-and-wire-contract) lists the selective equivalent. Play/Sync/Loop/Cue LEDs and meters follow the selected deck. Deck selection requests a fresh snapshot before mixer/tempo pickup and type-dependent actions resume. The console prints both sides' deck number, player type and effective bank name (including marker/step overrides), and updates its window title so selection remains visible above scrolling logs where the terminal supports it.
+In AP's OSC Feedback settings, use **Toggle All** so all subscriptions are checked, including **TempoSlider**. Unused feedback is ignored. If selecting manually, subscribe for decks 1–4 to `PlayerType`, `Playing`, `Sync`, `Loop`, `TempoSlider`, and mixer channels 1–4 to `Volume`, `Trim`, `EQ/High`, `EQ/Mid`, `EQ/Low`, `Filter1`, `Filter2`, `Cue`, `Meter` (plus `Mute` for LC3). Play/Sync/Loop/Cue LEDs and meters follow the selected deck. Deck selection requests a fresh snapshot before mixer/tempo pickup and type-dependent actions resume. The console prints both sides' deck number, player type and effective bank name (including marker/step overrides), and updates its window title so selection remains visible above scrolling logs where the terminal supports it.
 
-Held actions keep their original resolved address across bank/deck selection. Content changes, app restarts, network loss and force-kills remain boundaries: stop/restart the bridge when state is uncertain. Profile overrides and `slip_timing` are documented in [DEVELOPMENT.md](DEVELOPMENT.md#cli-and-profiles).
+Held actions keep their original resolved address across bank/deck selection. Content changes, app restarts, network loss and force-kills remain boundaries: stop/restart the bridge when state is uncertain. Pad customization and `slip_timing` are documented in [PROFILES.md](PROFILES.md#flx4-and-legacy-pads).
+
+## Launch Control 3 (compact, DAW USB ports)
+
+The included `profiles/launch-control-3.json` uses the compact LC3's built-in DAW modes, not the Main MIDI port, XL 3 or a Components Custom Mode. On the controller, select **Mode → Function (DAW)** to switch DAW Mixer/Control. A startup selection request does not establish the mode until its report is received.
+
+| Control | DAW Mixer (Mode 1) | DAW Control (Mode 2) |
+|---|---|---|
+| Top encoders 1–6 | CH1 Low/Mid/High; CH2 Low/Mid/High | CH1 Filter1/Filter2; CH2 Filter1/Filter2; 5–6 unassigned |
+| Bottom encoders 1–6 | CH3 Low/Mid/High; CH4 Low/Mid/High | CH3 Filter1/Filter2; CH4 Filter1/Filter2; 5–6 unassigned |
+| Top encoder 8 | Browser Down clockwise / Up counterclockwise | Same |
+| Bottom buttons 1–8, default Hot Cues layer | Hot Cues 1–8 on the selected deck | Same |
+| Function | Toggle Hot Cues ↔ Mixer button layer | Same |
+| Track ◀ / ▶ | Select cue target Deck 1–4, stopping at either end | Same |
+| Bottom buttons 1–4, Mixer layer | Mute CH1–4 | Same |
+| Bottom buttons 5–8, Mixer layer | Headphone Cue CH1–4 | Same |
+
+Startup/reconnect selects **Deck 1 / Hot Cues**. The LC3 screen shows deck and button layer; Function is purple for Hot Cues and cyan for Mixer. Track navigation changes only the LC3 cue target, independently of FLX4, and never changes the fixed CH1–4 encoder/mixer assignments. Hardware EQ/filter mode and software button layer are independent.
+
+Hot-cue buttons send one `Deck/{deck}/Cue1`–`Cue8` trigger per press, with no held preview or changes to AP's CueMomentary/Slip switches. All eight have fixed RGB slot colours matching the supplied **Candy Pop** palette: `#FF5D73`, `#FF9F43`, `#FFE66D`, `#72EFB5`, `#48CAE4`, `#5E8CFF`, `#A875FF`, `#FF66C4`. These are stored in the profile's `hot_cues.on_enter` messages (RGB scaled to 0–127), not read from AP at runtime: **they do not indicate cue existence or follow later palette/per-cue colour changes**. An empty slot can set a cue under AP's normal cue behaviour; no populated-slot guard is available. AP's existing CueMomentary setting can affect tap behaviour. These assignments target track hot cues (arrangement decks interpret these routes as marker buttons); they do not add clip/sampler routing.
+
+Unused encoders are unassigned. Mixer-layer buttons require confirmed AP `Mute`/`Cue` feedback to toggle and drive their red/cyan LEDs; without it they do not guess. AP position feedback synchronizes endless EQ/filter encoders; missing feedback blocks pickup. The Browser encoder recenters over DAW MIDI output; the first non-echo report after a mode switch can be consumed as its baseline. Select AP Browser CONTROL MODE and enable mixer EQ/Filter1/Filter2/Mute/Cue feedback subscriptions. Filter1/Filter2 input paths still need confirmation against your AP version.
 
 ## Protocol references
 
 - [AlphaTheta MIDI list pp.2,5](https://downloads.support.alphatheta.com/software_info/dj-controllers/DDJ-FLX4/DDJ-FLX4_MIDI_message_List_E1.pdf): Shift+LOAD notes 104/122; native SYNC reports on release.
 - [AP guide §13.4](https://autopilot.audio/user-guide/index.html?c=c13), **Track and arrangement decks**, **MIDI clip decks**, **Sampler decks**, **Feedback**: exact routes, switch/trigger/momentary semantics and feedback. §§6.6/6.9 describe loop and marker behaviour.
 
-Hardware behaviour is unverified. See [CONTROL-GUIDE.pdf](CONTROL-GUIDE.pdf) for a printable layout.
+For editing profiles, see [PROFILES.md](PROFILES.md).

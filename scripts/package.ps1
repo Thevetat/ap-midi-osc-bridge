@@ -3,22 +3,24 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
-$work = Join-Path ([System.IO.Path]::GetTempPath()) "flx4-pilot-$([guid]::NewGuid().ToString('N'))"
+$work = Join-Path ([System.IO.Path]::GetTempPath()) "ap-midi-osc-bridge-$([guid]::NewGuid().ToString('N'))"
 Push-Location $project
 try {
     $metadataText = & cargo metadata --format-version 1 --locked --filter-platform $Target
     if ($LASTEXITCODE -ne 0) { throw 'cargo metadata failed' }
     $metadata = ($metadataText -join "`n") | ConvertFrom-Json
-    $root = $metadata.packages | Where-Object { $_.name -eq 'flx4-pilot' }
-    $name = "flx4-pilot-$($root.version)-$Target"
+    $root = @($metadata.packages | Where-Object { $_.name -eq 'ap-midi-osc-bridge' })
+    if ($root.Count -ne 1) { throw 'Expected ap-midi-osc-bridge package in cargo metadata' }
+    $root = $root[0]
+    $name = "$($root.name)-$($root.version)-$Target"
     $dist = Join-Path $project 'dist'
     $stage = Join-Path $work 'files'
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
     $windows = $Target -match 'windows'
-    $binary = if ($windows) { 'flx4-pilot.exe' } else { 'flx4-pilot' }
+    $binary = if ($windows) { 'ap-midi-osc-bridge.exe' } else { 'ap-midi-osc-bridge' }
     Copy-Item (Join-Path $metadata.target_directory "$Target/release/$binary") $stage
-    Copy-Item README.md, USER-GUIDE.md, DEVELOPMENT.md, CONTROLLER-PORTING.md, MAPPING.md, STATUS.md, CONTROL-GUIDE.html, CONTROL-GUIDE.pdf, LICENSE $stage
-    if ($windows) { Copy-Item 'Start FLX4 Pilot.cmd' $stage }
+    Copy-Item README.md, PROFILES.md, MAPPING.md, CONTROL-GUIDE.html, CONTROL-GUIDE.pdf, LAUNCH-CONTROL-3-GUIDE.html, LAUNCH-CONTROL-3-GUIDE.pdf, LICENSE $stage
+    Copy-Item -LiteralPath (Join-Path $project 'profiles') -Destination $stage -Recurse
     $notices = @('# Dependency notices', '', 'Generated from Cargo.lock and dependency source packages.', '')
     $resolved = @{}
     foreach ($node in $metadata.resolve.nodes) { $resolved[$node.id] = $true }
