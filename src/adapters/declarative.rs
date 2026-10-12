@@ -1,8 +1,8 @@
 //! Declarative per-device decoder. All AP values and switch/hold arbitration live in SharedAp.
+use super::Adapter;
 use crate::{
     ap::SharedAp,
-    device_profile::{Behavior, Binding, DeviceProfile, FeedbackKind, MidiKind},
-    runtime::Device,
+    profile::{Behavior, Binding, DeviceProfile, FeedbackKind, MidiKind},
 };
 use anyhow::{anyhow, Result};
 use midir::MidiOutputConnection;
@@ -14,7 +14,7 @@ use std::{
 
 type Physical = (usize, MidiKind, u8, u8);
 
-pub struct Session {
+pub struct Declarative {
     name: String,
     profile: DeviceProfile,
     outputs: Vec<MidiOutputConnection>,
@@ -34,7 +34,7 @@ pub struct Session {
     warning: Option<String>,
 }
 
-impl Session {
+impl Declarative {
     pub fn new(
         name: String,
         profile: DeviceProfile,
@@ -43,7 +43,7 @@ impl Session {
     ) -> Result<Self> {
         profile.validate()?;
         if profile.protocol != "declarative" {
-            return Err(anyhow!("{}: Session supports protocol 'declarative', not {:?}; select the corresponding protocol engine", name, profile.protocol));
+            return Err(anyhow!("{}: Declarative adapter supports protocol 'declarative', not {:?}; select the corresponding protocol engine", name, profile.protocol));
         }
         if outputs.len() != profile.outputs.len() {
             return Err(anyhow!(
@@ -129,7 +129,7 @@ impl Session {
         Ok(true)
     }
 
-    fn hooks(&mut self, messages: &[crate::device_profile::MidiMessage]) -> Result<()> {
+    fn hooks(&mut self, messages: &[crate::profile::MidiMessage]) -> Result<()> {
         for m in messages {
             // Raw hooks may replace an LED that previously followed AP feedback.
             // Do not let its cached old colour prevent repainting on layer return.
@@ -296,6 +296,35 @@ impl Session {
         Ok(())
     }
 
+    /// Center only controls in the confirmed hardware mode and current software layer.
+    fn recenter_controls(&mut self) -> Result<()> {
+        let recenter: Vec<_> = self
+            .profile
+            .bindings
+            .iter()
+            .filter(|b| {
+                (self.mode.is_some() || self.profile.modes.iter().all(|m| m.reports.is_empty()))
+                    && self.active(&b.mode)
+                    && self.active_layer(&b.layer)
+            })
+            .filter_map(|b| match &b.behavior {
+                Behavior::Recenter { output, center, .. } => {
+                    Some((*output, b.input, b.channel, b.number, *center))
+                }
+                _ => None,
+            })
+            .collect();
+        for (output, input, channel, number, center) in recenter {
+            self.emit(
+                output,
+                &[0xb0 | (channel - 1), number, center],
+                false,
+                Some(input),
+            )?;
+        }
+        Ok(())
+    }
+
     fn changed_mode(&mut self, next: Option<String>) -> Result<()> {
         if self.mode == next {
             return Ok(());
@@ -310,31 +339,7 @@ impl Session {
         self.recenter_seen.clear();
         self.render_selection()?;
         self.refresh()?;
-        // Center all recenter-capable controls only after a *confirmed* mode report.
-        let recenter: Vec<_> = self
-            .profile
-            .bindings
-            .iter()
-            .filter(|b| {
-                (self.mode.is_some() || self.profile.modes.iter().all(|m| m.reports.is_empty()))
-                    && self.active(&b.mode)
-            })
-            .filter(|b| self.active_layer(&b.layer))
-            .filter_map(|b| match &b.behavior {
-                Behavior::Recenter { center, output, .. } => {
-                    Some((*output, b.input, b.channel, b.number, *center))
-                }
-                _ => None,
-            })
-            .collect();
-        for (output, input, channel, number, center) in recenter {
-            self.emit(
-                output,
-                &[0xb0 | (channel - 1), number, center],
-                false,
-                Some(input),
-            )?;
-        }
+        self.recenter_controls()?;
         println!(
             "{}: mode {}",
             self.name,
@@ -578,37 +583,14 @@ impl Session {
     }
 }
 
-impl Device for Session {
+impl Adapter for Declarative {
     fn start(&mut self) -> Result<()> {
         let hooks = self.profile.startup.clone();
         self.hooks(&hooks)?;
         self.last_tick = Instant::now();
         self.render_selection()?;
         self.refresh()?;
-        let recenter: Vec<_> = self
-            .profile
-            .bindings
-            .iter()
-            .filter(|b| {
-                (self.mode.is_some() || self.profile.modes.iter().all(|m| m.reports.is_empty()))
-                    && self.active(&b.mode)
-            })
-            .filter(|b| self.active_layer(&b.layer))
-            .filter_map(|b| match &b.behavior {
-                Behavior::Recenter { output, center, .. } => {
-                    Some((*output, b.input, b.channel, b.number, *center))
-                }
-                _ => None,
-            })
-            .collect();
-        for (output, input, channel, number, center) in recenter {
-            self.emit(
-                output,
-                &[0xb0 | (channel - 1), number, center],
-                false,
-                Some(input),
-            )?;
-        }
+        self.recenter_controls()?;
         self.ap
             .borrow_mut()
             .send("/AutoPilot/Feedback/Resend", OscType::Int(1))?;

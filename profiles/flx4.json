@@ -72,7 +72,6 @@
     ],
     "pad_wiring":{"channels":[7,8,9,10],"bank_notes":[27,30,32,34,105,107,109,111]},
     "pads":{
-      "version":1,
       "banks":[
         {"name":"Hot cues","pads":[
           {"address":"/AutoPilot/Deck/{deck}/Cue1","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue2","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue3","press":1},{"address":"/AutoPilot/Deck/{deck}/Cue4","press":1},

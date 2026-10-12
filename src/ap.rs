@@ -1,7 +1,7 @@
 //! Shared OSC transport, confirmed AP state and held controls for all devices.
-use crate::profile::SlipTiming;
 use anyhow::{bail, Result};
 use rosc::{OscMessage, OscPacket, OscType};
+use serde::{Deserialize, Serialize};
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
@@ -9,6 +9,79 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SlipTiming {
+    Straight,
+    Dotted,
+    Triplet,
+    /// Use the deck's latched timing instead of a fixed per-pad override.
+    Selected,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Player {
+    Track,
+    Arrangement,
+    Clip,
+    Sampler,
+    Empty,
+    Unknown,
+}
+
+impl Player {
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "track" => Self::Track,
+            "arrangement" => Self::Arrangement,
+            "clip" => Self::Clip,
+            "sampler" => Self::Sampler,
+            "empty" => Self::Empty,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Track => "track",
+            Self::Arrangement => "arrangement",
+            Self::Clip => "clip",
+            Self::Sampler => "sampler",
+            Self::Empty => "empty",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    // Only translate routes documented for the loaded player. No guessed aliases.
+    pub fn route(self, route: &str) -> Option<String> {
+        match self {
+            Self::Track if matches!(route, "ControlPagePrevious" | "ControlPageNext") => None,
+            Self::Track | Self::Arrangement
+                if !route.starts_with("Sampler/") && !route.starts_with("Clip/") =>
+            {
+                Some(route.into())
+            }
+            Self::Clip => match route {
+                "PlayPause" | "Cue" | "GridStart" | "Cue1" | "Cue2" | "Cue3" | "Cue4" | "Cue5"
+                | "Cue6" | "Cue7" | "Cue8" | "PitchDown" | "PitchReset" | "PitchUp"
+                | "PitchStep" | "PhaseMinus" | "PhasePlus" | "PhaseBend" | "PhaseReset" => {
+                    Some(format!("Clip/{route}"))
+                }
+                _ if route.starts_with("Clip/") => Some(route.into()),
+                _ => None,
+            },
+            Self::Sampler => match route {
+                "PlayPause" | "PhaseBend" | "PhaseReset" | "Speed" | "Quantize" | "FaderStart" => {
+                    Some(format!("Sampler/{route}"))
+                }
+                _ if route.starts_with("Sampler/") => Some(route.into()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+}
 
 pub type SharedAp = Rc<RefCell<Ap>>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -149,7 +222,7 @@ impl Ap {
         }
     }
     pub fn register(&mut self, address: &str, kind: FeedbackKind) -> Result<()> {
-        if !crate::device_profile::valid_address(address) || address.contains('{') {
+        if !crate::profile::valid_address(address) || address.contains('{') {
             bail!("Invalid resolved feedback route {address}");
         }
         let key = address.to_ascii_lowercase();

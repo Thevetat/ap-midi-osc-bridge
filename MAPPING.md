@@ -124,7 +124,7 @@ Clip `Loop` means restart-at-end, not the track loop toggle; the bridge does not
 
 In AP's OSC Feedback settings, use **Toggle All** so all subscriptions are checked, including **TempoSlider**. Unused feedback is ignored. If selecting manually, subscribe for decks 1–4 to `PlayerType`, `Playing`, `Sync`, `Loop`, `TempoSlider`, and mixer channels 1–4 to `Volume`, `Trim`, `EQ/High`, `EQ/Mid`, `EQ/Low`, `Filter1`, `Filter2`, `Cue`, `Meter` (plus `Mute` for LC3). Play/Sync/Loop/Cue LEDs and meters follow the selected deck. Deck selection requests a fresh snapshot before mixer/tempo pickup and type-dependent actions resume. The console prints both sides' deck number, player type and effective bank name (including marker/step overrides), and updates its window title so selection remains visible above scrolling logs where the terminal supports it.
 
-Held actions keep their original resolved address across bank/deck selection. Content changes, app restarts, network loss and force-kills remain boundaries: stop/restart the bridge when state is uncertain. Pad customization and `slip_timing` are documented in [PROFILES.md](PROFILES.md#flx4-and-legacy-pads).
+Held actions keep their original resolved address across bank/deck selection. Content changes, app restarts, network loss and force-kills remain boundaries: stop/restart the bridge when state is uncertain. Pad customization and `slip_timing` are documented in [PROFILES.md](PROFILES.md#flx4-pads).
 
 ## Launch Control 3 (compact, DAW USB ports)
 

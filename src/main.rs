@@ -1,11 +1,8 @@
+mod adapters;
 mod ap;
-mod device_profile;
-mod flx4;
-mod mapping;
+mod midi;
 mod profile;
-mod registry;
 mod runtime;
-mod session;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -57,13 +54,13 @@ fn app_directory() -> Result<PathBuf> {
 fn run() -> Result<()> {
     let options = Options::parse();
     if options.list {
-        return runtime::list();
+        return midi::list();
     }
     let running = Arc::new(AtomicBool::new(true));
     let signal = running.clone();
     ctrlc::set_handler(move || signal.store(false, Ordering::Relaxed))?;
     if let Some(input) = options.monitor {
-        return runtime::monitor(&input, running);
+        return midi::monitor(&input, running);
     }
 
     let directory = app_directory()?;

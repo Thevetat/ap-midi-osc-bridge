@@ -1,16 +1,18 @@
-//! DDJ-FLX4 MIDI protocol capability. MIDI decoding lives here; AP assignments live in
-//! `profiles/flx4.json`; its pads use the legacy version-1 layout schema.
+//! DDJ-FLX4 MIDI protocol capability. MIDI decoding lives here;
+//! AP assignments and pad banks live in `profiles/flx4.json`.
+mod config;
+mod pads;
+
+use super::Adapter;
 use crate::{
-    ap::{FeedbackKind, SharedAp},
-    device_profile::DeviceProfile,
-    mapping::Player,
-    profile::{Action, Profile, SlipTiming},
-    runtime::Device,
+    ap::{FeedbackKind, Player, SharedAp, SlipTiming},
+    profile::DeviceProfile,
 };
 use anyhow::{anyhow, bail, Context, Result};
+use config::{Config, LedKind, SideBehavior};
 use midir::MidiOutputConnection;
+use pads::Action;
 use rosc::OscType;
-use serde::{de::Error as _, Deserialize, Deserializer};
 use std::{
     collections::{HashMap, HashSet},
     time::{Duration, Instant},
@@ -21,278 +23,40 @@ const KEEPALIVE: [u8; 12] = [
     0xf0, 0x00, 0x40, 0x05, 0x00, 0x00, 0x04, 0x05, 0x00, 0x50, 0x02, 0xf7,
 ];
 
-// Flatten + deny_unknown_fields is unsupported by serde. Decode the shared identity
-// separately, then let the tagged behavior reject every unrecognized assignment key.
-#[derive(Clone)]
-struct SideButton {
-    channel: u8,
-    note: u8,
-    side: Option<usize>,
-    behavior: SideBehavior,
+pub(super) fn validate(profile: &DeviceProfile) -> Result<()> {
+    config::load(profile).map(|_| ())
 }
-impl<'de> Deserialize<'de> for SideButton {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        let mut value = serde_json::Value::deserialize(deserializer)?;
-        let obj = value
-            .as_object_mut()
-            .ok_or_else(|| D::Error::custom("FLX4 button must be an object"))?;
-        let channel = obj
-            .remove("channel")
-            .ok_or_else(|| D::Error::missing_field("channel"))?;
-        let note = obj
-            .remove("note")
-            .ok_or_else(|| D::Error::missing_field("note"))?;
-        let side = obj.remove("side");
-        let channel = serde_json::from_value(channel).map_err(D::Error::custom)?;
-        let note = serde_json::from_value(note).map_err(D::Error::custom)?;
-        let side = side
-            .map(serde_json::from_value)
-            .transpose()
-            .map_err(D::Error::custom)?;
-        let behavior = serde_json::from_value(value).map_err(D::Error::custom)?;
-        Ok(Self {
-            channel,
-            note,
-            side,
-            behavior,
-        })
-    }
-}
-#[derive(Clone, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-enum SideBehavior {
-    Action { action: Action },
-    Toggle { address: String },
-    Bank { bank: usize },
-    Shift,
-    SelectDeck,
-    Browse { address: String },
-}
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Analog {
-    channel: u8,
-    cc: u8,
-    #[serde(default)]
-    side: Option<usize>,
-    address: String,
-    #[serde(default)]
-    shifted_address: Option<String>,
-    #[serde(default)]
-    bipolar: bool,
-    #[serde(default)]
-    direct: bool,
-}
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Encoder {
-    channel: u8,
-    cc: u8,
-    up: String,
-    down: String,
-}
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Led {
-    address: String,
-    channel: u8,
-    kind: LedKind,
-    number: u8,
-    #[serde(default = "on_value")]
-    on: u8,
-    #[serde(default)]
-    off: u8,
-}
-fn on_value() -> u8 {
-    127
-}
-#[derive(Clone, Copy, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum LedKind {
-    Switch,
-    Meter,
-}
-#[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PadWiring {
-    channels: [u8; 4],
-    bank_notes: [u8; 8],
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Config {
-    buttons: Vec<SideButton>,
-    analog: Vec<Analog>,
-    browser_encoder: Encoder,
-    leds: Vec<Led>,
-    pads: Option<Profile>,
-    pad_wiring: PadWiring,
-}
-fn config(profile: &DeviceProfile) -> Result<Config> {
-    if profile.protocol != "flx4" {
-        bail!("FLX4 capability requires protocol 'flx4'");
-    }
-    let value = profile.protocol_config.clone();
-    if value.is_null() {
-        bail!("FLX4 protocol_config is required and cannot be null");
-    }
-    serde_json::from_value(value).context("Invalid FLX4 protocol_config")
-}
-fn valid_route(route: &str) -> bool {
-    crate::device_profile::valid_address(route)
-}
+
 fn resolved(route: &str, deck: usize) -> String {
     route.replace("{deck}", &(deck + 1).to_string())
 }
-/// Pure pre-MIDI validation, including the embedded version-1 pad format.
-pub fn validate_config(profile: &DeviceProfile) -> Result<()> {
-    profile.validate()?;
-    let mut cfg = config(profile)?;
-    if profile.inputs.len() != 1 || profile.outputs.len() != 1 {
-        bail!("FLX4 requires exactly one input and one output");
-    }
-    if !profile.startup.is_empty()
-        || !profile.periodic.is_empty()
-        || !profile.shutdown.is_empty()
-        || !profile.bindings.is_empty()
-        || !profile.feedback.is_empty()
-        || !profile.modes.is_empty()
-        || !profile.layers.is_empty()
-        || !profile.deck_feedback.is_empty()
-    {
-        bail!("FLX4 protocol_config owns MIDI hooks, buttons, feedback and modes; top-level declarative bindings/hooks are not supported");
-    }
-    cfg.pads
-        .as_mut()
-        .context("FLX4 protocol_config.pads is required")?
-        .validate()?;
-    if cfg.buttons.len() > 512 || cfg.analog.len() > 64 || cfg.leds.len() > 128 {
-        bail!("FLX4 profile exceeds limits (512 buttons, 64 analog controls, 128 LEDs)");
-    }
-    let mut buttons = HashSet::new();
-    for b in &mut cfg.buttons {
-        if !matches!(b.channel, 0 | 1 | 6)
-            || b.note > 127
-            || b.side
-                .is_some_and(|side| side > 1 || b.channel <= 1 && side != b.channel as usize)
-            || !buttons.insert((b.channel, b.note))
-        {
-            bail!(
-                "Invalid/duplicate FLX4 button on channel {} note {}",
-                b.channel,
-                b.note
-            );
-        }
-        match &mut b.behavior {
-            SideBehavior::Action { action } => action.validate()?,
-            SideBehavior::Toggle { address } | SideBehavior::Browse { address }
-                if !valid_route(address) =>
-            {
-                bail!("Invalid FLX4 button route: {address}")
-            }
-            SideBehavior::Bank { bank } if *bank >= 8 || b.channel > 1 => {
-                bail!("FLX4 bank must be 0..7 on deck side")
-            }
-            SideBehavior::Shift if b.channel > 1 => bail!("FLX4 Shift must be on deck side"),
-            SideBehavior::SelectDeck if b.channel != 6 => {
-                bail!("FLX4 deck selector requires channel 6")
-            }
-            _ => {}
-        }
-        if b.channel == 6
-            && b.side.is_none()
-            && (matches!(&b.behavior, SideBehavior::SelectDeck)
-                || matches!(&b.behavior, SideBehavior::Browse { address } if address.contains("{deck}"))
-                || matches!(&b.behavior, SideBehavior::Action { action } if action.address.contains("{deck}"))
-                || matches!(&b.behavior, SideBehavior::Toggle { address } if address.contains("{deck}")))
-        {
-            bail!(
-                "FLX4 channel-6 deck-targeting button {} needs explicit side 0 or 1",
-                b.note
-            );
-        }
-    }
-    let mut cc = HashSet::new();
-    for a in &cfg.analog {
-        if !matches!(a.channel, 0 | 1 | 6)
-            || a.cc > 31
-            || a.side
-                .is_some_and(|side| side > 1 || a.channel <= 1 && side != a.channel as usize)
-            || !cc.insert((a.channel, a.cc))
-            || !valid_route(&a.address)
-            || a.shifted_address.as_ref().is_some_and(|v| !valid_route(v))
-        {
-            bail!(
-                "Invalid/duplicate FLX4 14-bit analog channel {} CC {}",
-                a.channel,
-                a.cc
-            );
-        }
-        if a.channel == 6
-            && a.side.is_none()
-            && (a.address.contains("{deck}")
-                || a.shifted_address
-                    .as_ref()
-                    .is_some_and(|v| v.contains("{deck}")))
-        {
-            bail!(
-                "FLX4 channel-6 deck-targeting CC {} needs explicit side 0 or 1",
-                a.cc
-            );
-        }
-        if a.bipolar != a.address.ends_with("/TempoSlider")
-            || a.shifted_address
-                .as_ref()
-                .is_some_and(|v| a.bipolar != v.ends_with("/TempoSlider"))
-        {
-            bail!("FLX4 bipolar scaling is required only for TempoSlider");
-        }
-    }
-    let e = &cfg.browser_encoder;
-    if e.channel > 15
-        || e.cc > 127
-        || !valid_route(&e.up)
-        || !valid_route(&e.down)
-        || cc.contains(&(e.channel, e.cc))
-        || (e.cc >= 32 && cc.contains(&(e.channel, e.cc - 32)))
-    {
-        bail!("Invalid or conflicting FLX4 browser encoder");
-    }
-    if cfg.pad_wiring.channels != [7, 8, 9, 10]
-        || cfg.pad_wiring.bank_notes.iter().any(|n| *n > 127)
-    {
-        bail!(
-            "FLX4 pad wiring requires physical MIDI channels 7,8,9,10 and eight valid bank notes"
-        );
-    }
-    for (i, note) in cfg.pad_wiring.bank_notes.iter().enumerate() {
-        if !cfg.buttons.iter().any(|b| {
-            b.channel <= 1
-                && b.note == *note
-                && matches!(&b.behavior, SideBehavior::Bank { bank } if *bank == i)
-        }) {
-            bail!("FLX4 bank note {note} has no matching bank button {i}");
-        }
-    }
-    let mut leds = HashSet::new();
-    for led in &cfg.leds {
-        if led.channel > 1
-            || led.number > 127
-            || led.on > 127
-            || led.off > 127
-            || !valid_route(&led.address)
-            || !leds.insert((led.channel, led.number, matches!(led.kind, LedKind::Meter)))
-        {
-            bail!("Invalid or duplicate FLX4 LED");
-        }
-    }
-    Ok(())
+
+// Use physical keys so a release is still recognised after Shift or deck changes.
+fn physical_key(channel: u8, note: u8) -> (u8, u8) {
+    let note = match (channel, note) {
+        (0..=1, 0x0e) => 0x0b,
+        (0..=1, 0x48) => 0x0c,
+        (0..=1, 0x4c) => 0x10,
+        (0..=1, 0x4e) => 0x11,
+        (0..=1, 0x50) => 0x4d,
+        (0..=1, 0x5c | 0x60) => 0x58,
+        (0..=1, 0x68) => 0x54,
+        (0..=1, 0x69) => 0x1b,
+        (0..=1, 0x6b) => 0x1e,
+        (0..=1, 0x6d) => 0x20,
+        (0..=1, 0x6f) => 0x22,
+        (6, 0x68) => 0x46,
+        (6, 0x7a) => 0x47,
+        (6, 0x42) => 0x41,
+        (7..=10, _) => return (7 + ((channel - 7) / 2) * 2, note & 0x0f),
+        _ => note,
+    };
+    (channel, note)
 }
 
 pub struct Flx4 {
     name: String,
     cfg: Config,
-    pads: Profile,
     outputs: Vec<MidiOutputConnection>,
     ap: SharedAp,
     selected: [usize; 2],
@@ -306,8 +70,6 @@ pub struct Flx4 {
     captured: HashSet<(Key, String)>,
     leds: HashMap<(u8, u8), u8>,
     last_keepalive: Instant,
-    midi_count: u64,
-    feedback_count: u64,
     warning: Option<String>,
 }
 impl Flx4 {
@@ -317,13 +79,11 @@ impl Flx4 {
         outputs: Vec<MidiOutputConnection>,
         ap: SharedAp,
     ) -> Result<Self> {
-        validate_config(&profile)?;
+        profile.validate()?;
         if outputs.len() != 1 {
             bail!("FLX4 requires exactly one MIDI output connection");
         }
-        let mut cfg = config(&profile)?;
-        let mut pads = cfg.pads.take().expect("validated FLX4 pads");
-        pads.validate()?;
+        let cfg = config::load(&profile)?;
         for a in &cfg.analog {
             for route in std::iter::once(&a.address).chain(a.shifted_address.iter()) {
                 for deck in 0..4 {
@@ -366,7 +126,6 @@ impl Flx4 {
         Ok(Self {
             name,
             cfg,
-            pads,
             outputs,
             ap,
             selected: [0, 1],
@@ -380,8 +139,6 @@ impl Flx4 {
             captured: HashSet::new(),
             leds: HashMap::new(),
             last_keepalive: Instant::now() - Duration::from_secs(1),
-            midi_count: 0,
-            feedback_count: 0,
             warning: None,
         })
     }
@@ -423,9 +180,6 @@ impl Flx4 {
             return Ok(());
         };
         action.address = address;
-        if action.address.contains("/SlipLoop/") {
-            action.slip_timing.get_or_insert(SlipTiming::Straight);
-        }
         if action.toggle {
             let (prefix, suffix) = action
                 .address
@@ -440,13 +194,11 @@ impl Flx4 {
         } else if let Some(release) = action.release {
             let owner = self.owner(key);
             self.held.insert(key, owner.clone());
-            // Version-1 actions without slip_timing default to Straight (normalized
-            // by Profile::validate when the mapping is loaded).
-            if action.slip_timing.is_some() {
+            if let Some(timing) = action.slip_timing {
                 self.ap.borrow_mut().slip_hold(
                     &owner,
                     &action.address,
-                    action.slip_timing.unwrap_or(SlipTiming::Straight),
+                    timing,
                     action.press,
                     release,
                 )?;
@@ -694,7 +446,7 @@ impl Flx4 {
         Ok(())
     }
 }
-impl Device for Flx4 {
+impl Adapter for Flx4 {
     fn start(&mut self) -> Result<()> {
         for side in 0..2 {
             self.mode_feedback(side)?;
@@ -706,7 +458,6 @@ impl Device for Flx4 {
         if port != 0 || bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127 {
             return Ok(());
         }
-        self.midi_count += 1;
         let (kind, channel, number, value) = (bytes[0] & 0xf0, bytes[0] & 15, bytes[1], bytes[2]);
         if kind == 0xb0 {
             return self.cc(port, channel, number, value);
@@ -716,7 +467,7 @@ impl Device for Flx4 {
         }
         // Shifted pad reports alias the unshifted physical channel. Preserve that
         // canonical channel for both Note On and Note Off ownership/deduplication.
-        let (canonical_channel, canonical) = crate::mapping::key(channel, number);
+        let (canonical_channel, canonical) = physical_key(channel, number);
         let key = (port, canonical_channel, canonical);
         if kind == 0x80 || value == 0 {
             if channel <= 1 && canonical == 0x3f {
@@ -741,7 +492,7 @@ impl Device for Flx4 {
             }
             let side = index / 2;
             let deck = self.selected[side];
-            let action = self.pads.banks[self.banks[deck]]
+            let action = self.cfg.pads.banks[self.banks[deck]]
                 .action(
                     self.players[deck].name(),
                     (number & 15) as usize,
@@ -762,7 +513,6 @@ impl Device for Flx4 {
         Ok(())
     }
     fn feedback(&mut self, address: &str) -> Result<()> {
-        self.feedback_count += 1;
         let key = address.to_ascii_lowercase();
         for deck in 0..4 {
             if key == format!("/autopilot/deck/{}/playertype", deck + 1) {
@@ -810,7 +560,7 @@ impl Device for Flx4 {
                 if i == 0 { "LEFT" } else { "RIGHT" },
                 deck + 1,
                 self.players[deck],
-                self.pads.banks[self.banks[deck]].name(self.players[deck].name()),
+                self.cfg.pads.banks[self.banks[deck]].name(self.players[deck].name()),
                 timing
             )
         };
