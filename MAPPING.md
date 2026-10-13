@@ -4,6 +4,12 @@ The default DDJ-FLX4 → AUTO/PILOT controls below come from editable [`profiles
 
 `D` means the selected deck; `CHD` its main mixer channel. Addresses below start `/AutoPilot/`.
 
+## Start, stop and reconnect
+
+Follow [setup](README.md#get-started) and keep the bridge console open. Run only one instance: instances would compete for MIDI ports and OSC feedback port 9096. To return to direct MIDI control, stop the bridge and re-enable the controller's MIDI input in AP; leave saved AP mappings and audio settings alone.
+
+The bridge watches for attached/detached MIDI ports. Failed devices retry after about 10 seconds or a port change without stopping the others. Reconnection does not reload JSON: restart after profile edits. After an AP restart or uncertain state, stop/restart the bridge to request fresh feedback. Ctrl+C attempts releases and device shutdown; crashes, forced termination and UDP loss cannot guarantee AP receives them.
+
 ## Deck selection
 
 | Side | Startup deck | Gesture | Selection |
@@ -78,7 +84,7 @@ Pads 1–4 are the top row; 5–8 the bottom. Press a mode button for its **norm
 
 PAD FX pads 1–5 use the deck's **selected timing**. Pad 7 toggles Dotted; pad 8 toggles Triplet. Selecting either clears the other; pressing the active one again selects straight timing. Pad 6 is unassigned, including Shift+pad 6. Holding Shift does not change this bank's pad actions.
 
-Timing starts straight and is remembered independently per logical deck until changed or the bridge restarts. It stays selected after releasing all repeat pads and across bank/deck selection. The bridge sends explicit `SlipDotted` / `SlipTriplet` switch values. It clears both before setting either and reasserts its timing when starting a repeat. Console output/window title show the selected repeat timing.
+Timing starts straight and is remembered independently per logical deck until changed or the bridge restarts. It stays selected after releasing all repeat pads and across bank/deck selection. The bridge sends explicit `SlipDotted` / `SlipTriplet` switch values. It clears both before setting either and reasserts its timing when starting a repeat. Console output shows the selected repeat timing.
 
 The **latest held length wins per logical deck**: release the previous loop before starting a new one. Releasing the latest restarts the previous still-held loop, now using the current timing. Releasing an older pad does not interrupt the active one. Changing D/T while holding a PAD FX length stops/retriggers that loop with the new timing. Releasing the final length stops repeating but **does not reset D/T**.
 
@@ -122,7 +128,7 @@ Clip `Loop` means restart-at-end, not the track loop toggle; the bridge does not
 
 ## Feedback, profiles and safety
 
-In AP's OSC Feedback settings, use **Toggle All** so all subscriptions are checked, including **TempoSlider**. Unused feedback is ignored. If selecting manually, subscribe for decks 1–4 to `PlayerType`, `Playing`, `Sync`, `Loop`, `TempoSlider`, and mixer channels 1–4 to `Volume`, `Trim`, `EQ/High`, `EQ/Mid`, `EQ/Low`, `Filter1`, `Filter2`, `Cue`, `Meter` (plus `Mute` for LC3). Play/Sync/Loop/Cue LEDs and meters follow the selected deck. Deck selection requests a fresh snapshot before mixer/tempo pickup and type-dependent actions resume. The console prints both sides' deck number, player type and effective bank name (including marker/step overrides), and updates its window title so selection remains visible above scrolling logs where the terminal supports it.
+In AP's OSC Feedback settings, use **Toggle All** so all subscriptions are checked, including **TempoSlider**. Unused feedback is ignored. If selecting manually, subscribe for decks 1–4 to `PlayerType`, `Playing`, `Sync`, `Loop`, `TempoSlider`, and mixer channels 1–4 to `Volume`, `Trim`, `EQ/High`, `EQ/Mid`, `EQ/Low`, `Filter1`, `Filter2`, `Cue`, `Meter` (plus `Mute` for LC3). Play/Sync/Loop/Cue LEDs and meters follow the selected deck. Deck selection requests a fresh snapshot before mixer/tempo pickup and type-dependent actions resume. The console prints both sides' deck number, player type, effective bank name (including marker/step overrides) and selected repeat timing.
 
 Held actions keep their original resolved address across bank/deck selection. Content changes, app restarts, network loss and force-kills remain boundaries: stop/restart the bridge when state is uncertain. Pad customization and `slip_timing` are documented in [PROFILES.md](PROFILES.md#flx4-pads).
 
@@ -143,9 +149,25 @@ The included `profiles/launch-control-3.json` uses the compact LC3's built-in DA
 
 Startup/reconnect selects **Deck 1 / Hot Cues**. The LC3 screen shows deck and button layer; Function is purple for Hot Cues and cyan for Mixer. Track navigation changes only the LC3 cue target, independently of FLX4, and never changes the fixed CH1–4 encoder/mixer assignments. Hardware EQ/filter mode and software button layer are independent.
 
-Hot-cue buttons send one `Deck/{deck}/Cue1`–`Cue8` trigger per press, with no held preview or changes to AP's CueMomentary/Slip switches. All eight have fixed RGB slot colours matching the supplied **Candy Pop** palette: `#FF5D73`, `#FF9F43`, `#FFE66D`, `#72EFB5`, `#48CAE4`, `#5E8CFF`, `#A875FF`, `#FF66C4`. These are stored in the profile's `hot_cues.on_enter` messages (RGB scaled to 0–127), not read from AP at runtime: **they do not indicate cue existence or follow later palette/per-cue colour changes**. An empty slot can set a cue under AP's normal cue behaviour; no populated-slot guard is available. AP's existing CueMomentary setting can affect tap behaviour. These assignments target track hot cues (arrangement decks interpret these routes as marker buttons); they do not add clip/sampler routing.
+Hot-cue buttons send one `Deck/{deck}/Cue1`–`Cue8` trigger per press, with no held preview or changes to AP's CueMomentary/Slip switches. All eight have fixed RGB slot colours matching the supplied **Candy Pop** palette: `#FF5D73`, `#FF9F43`, `#FFE66D`, `#72EFB5`, `#48CAE4`, `#5E8CFF`, `#A875FF`, `#FF66C4`. These are stored in the `hot_cues` layer's `on_enter` messages under `adapter.layers` (RGB scaled to 0–127), not read from AP at runtime: **they do not indicate cue existence or follow later palette/per-cue colour changes**. An empty slot can set a cue under AP's normal cue behaviour; no populated-slot guard is available. AP's existing CueMomentary setting can affect tap behaviour. These assignments target track hot cues (arrangement decks interpret these routes as marker buttons); they do not add clip/sampler routing.
 
 Unused encoders are unassigned. Mixer-layer buttons require confirmed AP `Mute`/`Cue` feedback to toggle and drive their red/cyan LEDs; without it they do not guess. AP position feedback synchronizes endless EQ/filter encoders; missing feedback blocks pickup. The Browser encoder recenters over DAW MIDI output; the first non-echo report after a mode switch can be consumed as its baseline. Select AP Browser CONTROL MODE and enable mixer EQ/Filter1/Filter2/Mute/Cue feedback subscriptions. Filter1/Filter2 input paths still need confirmation against your AP version.
+
+## Troubleshooting
+
+| Symptom | What to check |
+|---|---|
+| One action occurs twice | Disable that controller's direct MIDI input in AP. |
+| No matching controller / port busy | Use `ap-midi-osc-bridge --list`; compare names with `profiles/*.json` and close other apps owning the ports. Restart after editing selectors. |
+| Profile conflict or ambiguous selector | Use unique input/output names; the bridge will not guess port ownership. |
+| Knob/fader does nothing | Move through AP's reported position; enable OSC feedback subscriptions. LC3 also needs a confirmed DAW mode report. |
+| Tempo stays blocked | Enable TempoSlider feedback; AP input and feedback must both use the bipolar −1..+1 API. |
+| FLX4 player type is Unknown; deck buttons do nothing | Check AP's feedback destination (default 127.0.0.1:9096) and PlayerType subscription; use four-deck view for decks 3/4. |
+| Browser does nothing | Set AP Browser Mode to CONTROL MODE and show the Browser. |
+| OSC feedback port busy | Stop the other instance using port 9096. |
+| Sampler pads do not play sounds | Pads select lanes or edit steps; PLAY runs the sequencer. |
+
+`--verbose` shows traffic and pickup counters; OSC sends are not confirmation that AP acted. For suspected AP bugs, first reproduce without the bridge as described in the [README warning](README.md).
 
 ## Protocol references
 

@@ -2,18 +2,32 @@
 mod declarative;
 mod flx4;
 
-use crate::{ap::SharedAp, profile::DeviceProfile};
+use crate::{
+    ap::SharedAp,
+    profile::{DeclarativeConfig, DeviceProfile},
+};
 use anyhow::{bail, Context, Result};
 use declarative::Declarative;
 use flx4::Flx4;
 use midir::MidiOutputConnection;
+use serde::Deserialize;
 use std::path::Path;
+
+/// One typed configuration per device; variant fields are strict, not flattened.
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Config {
+    Declarative(DeclarativeConfig),
+    Flx4(flx4::Config),
+}
 
 pub trait Adapter {
     fn start(&mut self) -> Result<()>;
     fn input(&mut self, port: usize, bytes: &[u8]) -> Result<()>;
     fn tick(&mut self) -> Result<()>;
-    fn feedback(&mut self, address: &str) -> Result<()>;
+    /// Interested, unique lowercase addresses from one fully processed OSC packet.
+    /// Invalidate affected captures before refreshing the hardware once.
+    fn feedback(&mut self, addresses: &[&str]) -> Result<()>;
     fn status(&self, verbose: bool) -> String;
     fn cleanup(&mut self);
 }
@@ -24,28 +38,38 @@ pub fn load(path: &Path) -> Result<DeviceProfile> {
         .with_context(|| format!("Read profile {}", path.display()))?;
     let profile: DeviceProfile =
         serde_json::from_str(&json).with_context(|| format!("Parse profile {}", path.display()))?;
-    validate(&profile)?;
-    Ok(profile)
-}
-
-fn validate(profile: &DeviceProfile) -> Result<()> {
     profile.validate()?;
-    match profile.protocol.as_str() {
-        "flx4" => flx4::validate(profile),
-        "declarative" => Ok(()),
-        other => bail!("Unsupported MIDI protocol {other:?}; supported: declarative, flx4"),
+    let (inputs, outputs) = (profile.inputs.len(), profile.outputs.len());
+    match &profile.adapter {
+        Config::Declarative(cfg) => cfg.validate(inputs, outputs)?,
+        Config::Flx4(cfg) => cfg.validate(inputs, outputs)?,
     }
+    Ok(profile)
 }
 
 pub fn create(
     name: String,
-    profile: DeviceProfile,
+    profile: &DeviceProfile,
     outputs: Vec<MidiOutputConnection>,
     ap: SharedAp,
 ) -> Result<Box<dyn Adapter>> {
-    match profile.protocol.as_str() {
-        "flx4" => Ok(Box::new(Flx4::new(name, profile, outputs, ap)?)),
-        "declarative" => Ok(Box::new(Declarative::new(name, profile, outputs, ap)?)),
-        other => bail!("Unsupported MIDI protocol {other:?}"),
+    if outputs.len() != profile.outputs.len() {
+        bail!(
+            "{name}: expected {} MIDI outputs, got {}",
+            profile.outputs.len(),
+            outputs.len()
+        );
+    }
+    // Discovery validated these typed configurations. Reconnect only clones the
+    // selected adapter's configuration; no JSON parsing or preflight is repeated.
+    match &profile.adapter {
+        Config::Flx4(cfg) => Ok(Box::new(Flx4::new(name, cfg.clone(), outputs, ap)?)),
+        Config::Declarative(cfg) => Ok(Box::new(Declarative::new(
+            name,
+            cfg.clone(),
+            profile.inputs.len(),
+            outputs,
+            ap,
+        )?)),
     }
 }

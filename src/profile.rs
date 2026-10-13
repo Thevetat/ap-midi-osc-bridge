@@ -1,14 +1,11 @@
-//! Version-2 declarative MIDI device format. Channels are one-based; port indexes are zero-based.
+//! Device identity and declarative adapter configuration. Channels are one-based;
+//! port indexes are zero-based.
 //! Bindings may be global or scoped to a reported mode. A mode with reports starts unknown
 //! until the hardware reports it; sending a selection hook does not confirm a mode.
 use anyhow::{bail, Result};
-use serde::{de, Deserialize, Deserializer, Serialize};
-use serde_json::Value;
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 
-fn declarative() -> String {
-    "declarative".into()
-}
 fn period() -> u64 {
     200
 }
@@ -19,18 +16,20 @@ fn max_value() -> u8 {
     127
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeviceProfile {
     pub version: u32,
     pub name: String,
-    #[serde(default = "declarative")]
-    pub protocol: String,
     pub inputs: Vec<String>,
     #[serde(default)]
     pub outputs: Vec<String>,
-    #[serde(default)]
-    pub protocol_config: Value,
+    pub adapter: crate::adapters::Config,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeclarativeConfig {
     #[serde(default)]
     pub startup: Vec<MidiMessage>,
     #[serde(default)]
@@ -52,14 +51,14 @@ pub struct DeviceProfile {
     pub feedback: Vec<Feedback>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MidiMessage {
     pub output: usize,
     pub bytes: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Layer {
     pub name: String,
@@ -67,7 +66,7 @@ pub struct Layer {
     pub on_enter: Vec<MidiMessage>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeckFeedback {
     pub deck: usize,
@@ -76,7 +75,7 @@ pub struct DeckFeedback {
     pub messages: Vec<MidiMessage>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Mode {
     pub name: String,
@@ -84,7 +83,7 @@ pub struct Mode {
     pub reports: Vec<ModeReport>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeReport {
     pub input: usize,
@@ -94,14 +93,14 @@ pub struct ModeReport {
     pub value: u8,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MidiKind {
     Note,
     Cc,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Binding {
     pub input: usize,
@@ -120,7 +119,7 @@ pub struct Binding {
     pub behavior: Behavior,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Behavior {
     /// Press alone, or a press/release pair owned by this physical button.
@@ -172,7 +171,7 @@ pub enum Behavior {
     StepDeck {
         delta: i8,
     },
-    CycleLayer,
+    CycleLayer {},
 }
 fn max_int() -> i32 {
     1
@@ -181,7 +180,7 @@ fn center() -> u8 {
     64
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FeedbackKind {
     Led {
@@ -193,10 +192,11 @@ pub enum FeedbackKind {
         unknown: Option<u8>,
     },
     /// Sends the last confirmed AP position to a DAW encoder (0..1 → 0..127).
-    Position,
+    Position {},
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Feedback {
     pub address: String,
     #[serde(default)]
@@ -212,83 +212,7 @@ pub struct Feedback {
     pub number: u8,
     #[serde(default)]
     pub deck_side: usize,
-    #[serde(flatten)]
-    pub kind: FeedbackKind,
-}
-
-// serde's flatten and deny_unknown_fields cannot be combined reliably. Check keys
-// explicitly, then deserialize the same shape through a private wire struct.
-impl<'de> Deserialize<'de> for Feedback {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Wire {
-            address: String,
-            #[serde(default)]
-            mode: Option<String>,
-            #[serde(default)]
-            layer: Option<String>,
-            output: usize,
-            midi_kind: MidiKind,
-            channel: u8,
-            number: u8,
-            #[serde(default)]
-            echo_input: Option<usize>,
-            #[serde(default)]
-            deck_side: usize,
-            #[serde(flatten)]
-            kind: FeedbackKind,
-        }
-        let value = Value::deserialize(deserializer)?;
-        let object = value
-            .as_object()
-            .ok_or_else(|| de::Error::custom("feedback must be an object"))?;
-        for key in object.keys() {
-            if !matches!(
-                key.as_str(),
-                "address"
-                    | "mode"
-                    | "layer"
-                    | "output"
-                    | "midi_kind"
-                    | "channel"
-                    | "number"
-                    | "echo_input"
-                    | "deck_side"
-                    | "kind"
-                    | "on"
-                    | "off"
-                    | "unknown"
-            ) {
-                return Err(de::Error::custom(format!("unknown feedback field {key:?}")));
-            }
-        }
-        let kind = object.get("kind").and_then(Value::as_str);
-        if !matches!(kind, Some("led" | "position")) {
-            return Err(de::Error::custom("feedback kind must be led or position"));
-        }
-        if kind == Some("position")
-            && object
-                .keys()
-                .any(|key| matches!(key.as_str(), "on" | "off" | "unknown"))
-        {
-            return Err(de::Error::custom(
-                "position feedback cannot specify LED colours",
-            ));
-        }
-        let w: Wire = serde_json::from_value(value).map_err(de::Error::custom)?;
-        Ok(Self {
-            address: w.address,
-            mode: w.mode,
-            layer: w.layer,
-            output: w.output,
-            midi_kind: w.midi_kind,
-            channel: w.channel,
-            number: w.number,
-            echo_input: w.echo_input,
-            deck_side: w.deck_side,
-            kind: w.kind,
-        })
-    }
+    pub render: FeedbackKind,
 }
 
 pub fn valid_address(address: &str) -> bool {
@@ -314,20 +238,13 @@ fn midi_valid(bytes: &[u8]) -> bool {
 }
 
 impl DeviceProfile {
-    /// Pure preflight: no MIDI or AP side effects. Unsupported protocol implementations must
-    /// reject their own protocol_config before opening ports.
+    /// Common preflight; adapter configuration is validated by the loader.
     pub fn validate(&self) -> Result<()> {
         if self.version != 2 {
             bail!("Mapping {}: expected version 2", self.name);
         }
         if self.name.trim().is_empty() || self.name.len() > 100 {
             bail!("Mapping name must be 1..100 characters");
-        }
-        if self.protocol.trim().is_empty() {
-            bail!("Mapping protocol cannot be empty");
-        }
-        if self.protocol == "declarative" && !self.protocol_config.is_null() {
-            bail!("Declarative protocol does not support protocol_config; remove it or choose a supported protocol");
         }
         if self.inputs.is_empty()
             || self.inputs.len() > 8
@@ -340,6 +257,13 @@ impl DeviceProfile {
         {
             bail!("Mapping requires 1..8 nonempty inputs and 0..8 nonempty outputs");
         }
+        Ok(())
+    }
+}
+
+impl DeclarativeConfig {
+    /// Pure preflight before opening ports; port counts belong to the device identity.
+    pub fn validate(&self, inputs: usize, outputs: usize) -> Result<()> {
         if self.bindings.len() > 1024 || self.feedback.len() > 512 || self.modes.len() > 32 {
             bail!("Mapping exceeds binding/feedback/mode limits (1024/512/32)");
         }
@@ -378,7 +302,7 @@ impl DeviceProfile {
                 bail!("{label} hook exceeds 32 MIDI messages");
             }
             for message in messages {
-                if message.output >= self.outputs.len() || !midi_valid(&message.bytes) {
+                if message.output >= outputs || !midi_valid(&message.bytes) {
                     bail!("{label} MIDI hook needs a valid output and a three-byte MIDI message or bounded (<=64 byte) SysEx");
                 }
             }
@@ -403,7 +327,7 @@ impl DeviceProfile {
                 bail!("Mode name must be unique and <=80 bytes with <=64 reports");
             }
             for report in &mode.reports {
-                if report.input >= self.inputs.len()
+                if report.input >= inputs
                     || !valid_control(report.channel, report.number)
                     || report.value > 127
                     || !reports.insert((
@@ -421,7 +345,7 @@ impl DeviceProfile {
         }
         let mut controls = Vec::new();
         for binding in &self.bindings {
-            if binding.input >= self.inputs.len()
+            if binding.input >= inputs
                 || !valid_control(binding.channel, binding.number)
                 || binding.deck_side > 3
                 || binding.mode.as_ref().is_some_and(|m| !modes.contains(m))
@@ -437,7 +361,7 @@ impl DeviceProfile {
                             | Behavior::Toggle { .. }
                             | Behavior::SelectDeck { .. }
                             | Behavior::StepDeck { .. }
-                            | Behavior::CycleLayer
+                            | Behavior::CycleLayer {}
                     )
                 {
                     bail!("press_value requires a button behavior and a value in 1..127");
@@ -486,7 +410,7 @@ impl DeviceProfile {
                     }
                     vec![]
                 }
-                Behavior::CycleLayer => {
+                Behavior::CycleLayer {} => {
                     if self.layers.len() < 2 {
                         bail!("CycleLayer requires at least two layers");
                     }
@@ -521,15 +445,15 @@ impl DeviceProfile {
                 bail!("14-bit control MSB number must be 0..31 (LSB is number+32)");
             }
             if let Behavior::Recenter { output, center, .. } = &binding.behavior {
-                if *output >= self.outputs.len() || *center > 127 {
+                if *output >= outputs || *center > 127 {
                     bail!("Recenter requires a valid MIDI output and center <=127");
                 }
             }
         }
-        let mut outputs = Vec::new();
+        let mut destinations = Vec::new();
         for f in &self.feedback {
-            if f.output >= self.outputs.len()
-                || f.echo_input.is_some_and(|i| i >= self.inputs.len())
+            if f.output >= outputs
+                || f.echo_input.is_some_and(|i| i >= inputs)
                 || !valid_control(f.channel, f.number)
                 || f.deck_side > 3
                 || !valid_address(&f.address)
@@ -539,7 +463,7 @@ impl DeviceProfile {
                 bail!("Invalid feedback address/output/control/mode/layer");
             }
             let identity = (f.output, f.midi_kind, f.channel, f.number);
-            if outputs.iter().any(|(previous, mode, layer)| {
+            if destinations.iter().any(|(previous, mode, layer)| {
                 *previous == identity
                     && scopes_overlap(mode, &f.mode)
                     && scopes_overlap(layer, &f.layer)
@@ -551,11 +475,11 @@ impl DeviceProfile {
                     f.number
                 );
             }
-            outputs.push((identity, f.mode.clone(), f.layer.clone()));
-            if matches!(f.kind, FeedbackKind::Position) && f.midi_kind != MidiKind::Cc {
+            destinations.push((identity, f.mode.clone(), f.layer.clone()));
+            if matches!(f.render, FeedbackKind::Position {}) && f.midi_kind != MidiKind::Cc {
                 bail!("Position feedback requires a CC output");
             }
-            if let FeedbackKind::Led { on, off, unknown } = &f.kind {
+            if let FeedbackKind::Led { on, off, unknown } = &f.render {
                 if *on > 127 || *off > 127 || unknown.is_some_and(|v| v > 127) {
                     bail!("LED values must be 0..127");
                 }
@@ -605,9 +529,9 @@ impl DeviceProfile {
             }
         }
         for f in &self.feedback {
-            let kind = match &f.kind {
+            let kind = match &f.render {
                 FeedbackKind::Led { .. } => crate::ap::FeedbackKind::Switch,
-                FeedbackKind::Position => {
+                FeedbackKind::Position {} => {
                     // Position feedback uses the wire scale of its matching absolute binding.
                     if self.bindings.iter().any(|b| match &b.behavior {
                         Behavior::Absolute {

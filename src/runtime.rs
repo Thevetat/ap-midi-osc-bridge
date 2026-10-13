@@ -23,17 +23,46 @@ use std::{
     time::{Duration, Instant},
 };
 
-struct ProfileEntry {
+struct Device {
     owner: String,
     profile: DeviceProfile,
+    live: Option<Live>,
+    failed_at: Option<Instant>,
     last_status: Option<String>,
 }
-impl ProfileEntry {
+impl Device {
     fn status(&mut self, message: String) {
         if self.last_status.as_ref() != Some(&message) {
             println!("[{}: {}] {message}", self.owner, self.profile.name);
         }
         self.last_status = Some(message);
+    }
+    fn report(&mut self, verbose: bool) {
+        let Some(live) = &mut self.live else { return };
+        let status = live.engine.status(verbose);
+        let changed = live.last_status.as_ref() != Some(&status);
+        live.last_status = Some(status.clone());
+        if verbose {
+            println!(
+                "[{}] {status} | MIDI in={} OSC sent={} feedback received={}",
+                self.owner, live.midi_count, live.osc_count, live.feedback_count
+            );
+        } else if changed {
+            self.status(status);
+        }
+    }
+    fn detach(&mut self, ap: &SharedAp) {
+        if let Some(mut live) = self.live.take() {
+            // Stop callbacks before releasing held controls and MIDI outputs.
+            live.connections.clear();
+            live.engine.cleanup();
+        }
+        ap.borrow_mut().remove_session(&self.owner);
+    }
+    fn fail(&mut self, message: String, ap: &SharedAp) {
+        self.status(format!("{message}; retrying in 10s or on port change"));
+        self.detach(ap);
+        self.failed_at = Some(Instant::now());
     }
 }
 #[derive(Clone, PartialEq, Eq)]
@@ -52,21 +81,7 @@ struct Live {
     feedback_count: u64,
     last_status: Option<String>,
 }
-impl Live {
-    fn status(&mut self, entry: &mut ProfileEntry, verbose: bool) {
-        let status = self.engine.status(verbose);
-        if verbose {
-            println!(
-                "[{}] {status} | MIDI in={} OSC sent={} feedback received={}",
-                entry.owner, self.midi_count, self.osc_count, self.feedback_count
-            );
-        } else if self.last_status.as_ref() != Some(&status) {
-            entry.status(status.clone());
-        }
-        self.last_status = Some(status);
-    }
-}
-fn discover(dir: &Path) -> Result<Vec<ProfileEntry>> {
+fn discover(dir: &Path) -> Result<Vec<Device>> {
     let mut paths = std::fs::read_dir(dir)
         .with_context(|| format!("Read profile directory {}", dir.display()))?
         .map(|item| item.map(|item| item.path()))
@@ -107,9 +122,11 @@ fn discover(dir: &Path) -> Result<Vec<ProfileEntry>> {
             }
             Ok(p)
         }) {
-            Ok(profile) if entries.len() < 32 => entries.push(ProfileEntry {
+            Ok(profile) if entries.len() < 32 => entries.push(Device {
                 owner,
                 profile,
+                live: None,
+                failed_at: None,
                 last_status: None,
             }),
             Ok(_) => eprintln!(
@@ -138,11 +155,7 @@ fn discover(dir: &Path) -> Result<Vec<ProfileEntry>> {
     );
     Ok(entries)
 }
-fn plan(
-    entries: &mut [ProfileEntry],
-    inputs: &[String],
-    outputs: &[String],
-) -> Vec<Option<Selection>> {
+fn plan(entries: &mut [Device], inputs: &[String], outputs: &[String]) -> Vec<Option<Selection>> {
     let mut plans = Vec::new();
     for entry in entries.iter_mut() {
         let mut ins = Vec::new();
@@ -230,7 +243,7 @@ fn plan(
     }
     result
 }
-fn attach(entry: &ProfileEntry, selected: Selection, ap: &SharedAp) -> Result<Live> {
+fn attach(entry: &Device, selected: Selection, ap: &SharedAp) -> Result<Live> {
     let (sender, receiver) = mpsc::sync_channel(4096);
     let overflow = Arc::new(AtomicBool::new(false));
     let mut connections = Vec::new();
@@ -292,14 +305,8 @@ fn attach(entry: &ProfileEntry, selected: Selection, ap: &SharedAp) -> Result<Li
                 .map_err(|e| anyhow!("open output {name}: {e}"))?,
         );
     }
-    ap.borrow_mut().registration_owner(&entry.owner);
-    let mut engine = adapters::create(
-        entry.owner.clone(),
-        entry.profile.clone(),
-        outputs,
-        ap.clone(),
-    )
-    .context("construct capability")?;
+    let mut engine = adapters::create(entry.owner.clone(), &entry.profile, outputs, ap.clone())
+        .context("construct capability")?;
     let before = ap.borrow().counters().0;
     if let Err(e) = engine.start() {
         connections.clear();
@@ -318,66 +325,54 @@ fn attach(entry: &ProfileEntry, selected: Selection, ap: &SharedAp) -> Result<Li
         last_status: None,
     })
 }
-fn detach(entry: &ProfileEntry, live: &mut Option<Live>, ap: &SharedAp) {
-    if let Some(mut session) = live.take() {
-        session.connections.clear(); // Stop callbacks before releasing held controls and MIDI outputs.
-        session.engine.cleanup();
-    }
-    ap.borrow_mut().remove_session(&entry.owner);
-}
 fn reconcile(
-    entries: &mut [ProfileEntry],
-    sessions: &mut [Option<Live>],
+    entries: &mut [Device],
     ap: &SharedAp,
     inputs: &[String],
     outputs: &[String],
-    failed_at: &mut [Option<Instant>],
 ) -> Result<()> {
     let mut attached = false;
     // Determine every claim before opening any MIDI ports. Conflicts invalidate ALL claimants.
     let plans = plan(entries, inputs, outputs);
     // Release every stale session before opening any replacement; port ownership can
     // move between profiles in this inventory snapshot.
-    for (i, desired) in plans.iter().enumerate() {
-        if sessions[i]
+    for (entry, desired) in entries.iter_mut().zip(&plans) {
+        if entry
+            .live
             .as_ref()
             .is_some_and(|live| Some(&live.selected) != desired.as_ref())
         {
-            detach(&entries[i], &mut sessions[i], ap);
+            entry.detach(ap);
         }
         if desired.is_none() {
-            failed_at[i] = None;
+            entry.failed_at = None;
         }
     }
-    for (i, desired) in plans.into_iter().enumerate() {
-        if sessions[i].is_some() || desired.is_none() {
+    for (entry, desired) in entries.iter_mut().zip(plans) {
+        let Some(desired) = desired else { continue };
+        if entry.live.is_some()
+            || entry
+                .failed_at
+                .is_some_and(|at| at.elapsed() < Duration::from_secs(10))
+        {
             continue;
         }
-        if failed_at[i].is_some_and(|at| at.elapsed() < Duration::from_secs(10)) {
-            continue;
-        }
-        match attach(&entries[i], desired.unwrap(), ap) {
-            Ok(mut live) => {
+        match attach(entry, desired, ap) {
+            Ok(live) => {
                 println!(
                     "[{}: {}] Connected: IN {} | OUT {}",
-                    entries[i].owner,
-                    entries[i].profile.name,
+                    entry.owner,
+                    entry.profile.name,
                     live.selected.inputs.join(", "),
                     live.selected.outputs.join(", ")
                 );
-                entries[i].last_status = None;
-                live.status(&mut entries[i], false);
-                sessions[i] = Some(live);
-                failed_at[i] = None;
+                entry.last_status = None;
+                entry.live = Some(live);
+                entry.failed_at = None;
+                entry.report(false);
                 attached = true;
             }
-            Err(e) => {
-                ap.borrow_mut().remove_session(&entries[i].owner);
-                entries[i].status(format!(
-                    "Device attach failed: {e:#}; retrying in 10s or on port change"
-                ));
-                failed_at[i] = Some(Instant::now());
-            }
+            Err(e) => entry.fail(format!("Device attach failed: {e:#}"), ap),
         }
     }
     if attached {
@@ -386,7 +381,7 @@ fn reconcile(
     }
     Ok(())
 }
-fn dispatch(live: &mut Live, entry: &ProfileEntry, ap: &SharedAp, verbose: bool) -> Result<()> {
+fn dispatch(live: &mut Live, owner: &str, ap: &SharedAp, verbose: bool) -> Result<()> {
     if live.overflow.load(Ordering::Relaxed) {
         bail!("MIDI queue overflow or packet >1024 bytes; releasing controls");
     }
@@ -396,7 +391,7 @@ fn dispatch(live: &mut Live, entry: &ProfileEntry, ap: &SharedAp, verbose: bool)
             Ok((port, bytes)) => {
                 live.midi_count += 1;
                 if verbose {
-                    println!("[{}] MIDI IN {port}: {:02X?}", entry.owner, bytes);
+                    println!("[{owner}] MIDI IN {port}: {:02X?}", bytes);
                 }
                 live.engine.input(port, &bytes).context("MIDI dispatch")?;
             }
@@ -427,29 +422,16 @@ pub fn run(
         destination,
         verbose,
     )));
-    let mut sessions: Vec<Option<Live>> = (0..entries.len()).map(|_| None).collect();
-    let mut failed_at = vec![None; entries.len()];
     println!("OSC → {destination} | feedback ← {feedback}. Waiting for matching MIDI devices; Ctrl+C exits.");
-    let result = event_loop(
-        &mut entries,
-        &mut sessions,
-        &mut failed_at,
-        &socket,
-        &ap,
-        destination,
-        verbose,
-        &running,
-    );
-    for (entry, live) in entries.iter().zip(&mut sessions) {
-        detach(entry, live, &ap);
+    let result = event_loop(&mut entries, &socket, &ap, destination, verbose, &running);
+    for entry in &mut entries {
+        entry.detach(&ap);
     }
     ap.borrow_mut().cleanup();
     result
 }
 fn event_loop(
-    entries: &mut [ProfileEntry],
-    sessions: &mut [Option<Live>],
-    failed_at: &mut [Option<Instant>],
+    entries: &mut [Device],
     socket: &UdpSocket,
     ap: &SharedAp,
     destination: SocketAddr,
@@ -470,15 +452,18 @@ fn event_loop(
                     inventory_warning = None;
                     let changed = previous_inventory.as_ref() != Some(&current);
                     if changed {
-                        failed_at.fill(None);
+                        for entry in entries.iter_mut() {
+                            entry.failed_at = None;
+                        }
                     }
                     if changed
-                        || failed_at
-                            .iter()
-                            .flatten()
-                            .any(|at| at.elapsed() >= Duration::from_secs(10))
+                        || entries.iter().any(|entry| {
+                            entry
+                                .failed_at
+                                .is_some_and(|at| at.elapsed() >= Duration::from_secs(10))
+                        })
                     {
-                        reconcile(entries, sessions, ap, &current.0, &current.1, failed_at)?;
+                        reconcile(entries, ap, &current.0, &current.1)?;
                         if verbose && changed {
                             ap.borrow().describe_shared_routes();
                         }
@@ -495,14 +480,10 @@ fn event_loop(
             }
             last_ports = Instant::now();
         }
-        for i in 0..sessions.len() {
-            if let Some(live) = &mut sessions[i] {
-                if let Err(e) = dispatch(live, &entries[i], ap, verbose) {
-                    entries[i].status(format!(
-                        "Device failed: {e:#}; retrying in 10s or on port change"
-                    ));
-                    detach(&entries[i], &mut sessions[i], ap);
-                    failed_at[i] = Some(Instant::now());
+        for entry in entries.iter_mut() {
+            if let Some(live) = &mut entry.live {
+                if let Err(e) = dispatch(live, &entry.owner, ap, verbose) {
+                    entry.fail(format!("Device failed: {e:#}"), ap);
                 }
             }
         }
@@ -513,26 +494,27 @@ fn event_loop(
                         if remaining.is_empty() {
                             packet_seen = true;
                             let addresses = ap.borrow_mut().accept(packet);
-                            for i in 0..sessions.len() {
-                                let Some(live) = &mut sessions[i] else {
+                            for entry in entries.iter_mut() {
+                                let Some(live) = &mut entry.live else {
                                     continue;
                                 };
-                                let before = ap.borrow().counters().0;
-                                let result = addresses
+                                let interested: Vec<_> = addresses
                                     .iter()
-                                    .filter(|address| {
-                                        ap.borrow().interested(&entries[i].owner, address)
-                                    })
-                                    .try_for_each(|address| {
-                                        live.engine.feedback(address)?;
-                                        live.feedback_count += 1;
-                                        Ok::<(), anyhow::Error>(())
-                                    });
+                                    .map(String::as_str)
+                                    .filter(|address| ap.borrow().interested(&entry.owner, address))
+                                    .collect();
+                                if interested.is_empty() {
+                                    continue;
+                                }
+                                let before = ap.borrow().counters().0;
+                                let result = live.engine.feedback(&interested);
                                 live.osc_count += ap.borrow().counters().0 - before;
-                                if let Err(e) = result {
-                                    entries[i].status(format!("Hardware feedback failed: {e:#}; retrying in 10s or on port change"));
-                                    detach(&entries[i], &mut sessions[i], ap);
-                                    failed_at[i] = Some(Instant::now());
+                                match result {
+                                    // Count addresses, not batches or hardware writes.
+                                    Ok(()) => live.feedback_count += interested.len() as u64,
+                                    Err(e) => {
+                                        entry.fail(format!("Hardware feedback failed: {e:#}"), ap)
+                                    }
                                 }
                             }
                         }
@@ -553,14 +535,12 @@ fn event_loop(
             }
         }
         if last_status.elapsed() >= Duration::from_secs(5) {
-            for (entry, session) in entries.iter_mut().zip(sessions.iter_mut()) {
-                if let Some(live) = session {
-                    live.status(entry, verbose);
-                }
+            for entry in entries.iter_mut() {
+                entry.report(verbose);
             }
             if !feedback_warning
                 && ap.borrow().counters().1 == 0
-                && sessions.iter().any(Option::is_some)
+                && entries.iter().any(|entry| entry.live.is_some())
             {
                 feedback_warning = true;
                 eprintln!("{} Enable AP OSC feedback subscriptions and check destination {destination} / feedback {}.", if packet_seen { "OSC received, but no valid subscribed control state." } else { "No valid OSC packets received from AP." }, socket.local_addr()?);

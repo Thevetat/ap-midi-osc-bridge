@@ -1,61 +1,88 @@
 # Developer reference
 
-[Quick start](README.md) · [User guide](USER-GUIDE.md) · [Mappings](MAPPING.md) · [Profile schema](PROFILES.md) · [Adding a controller](CONTROLLER-PORTING.md)
-
-The bridge loads version-2 device profiles from `profiles/` beside the release executable. MIDI devices have independent sessions; AP OSC feedback, route ownership and held-action cleanup are coordinated across them. FLX4 has a dedicated hardware capability and editable pad bindings; declarative profiles handle documented Note/CC controllers. JSON changes need a bridge restart. Do not assume a successful compilation establishes device or AP compatibility.
+[Setup](README.md) · [Controller operation](MAPPING.md) · [Profile schema](PROFILES.md)
 
 ## Build and package
 
-Install stable Rust and native build tools: Windows needs the MSVC C++ Build Tools/Windows SDK, macOS the Xcode command-line tools, and Linux a C compiler, `pkg-config` and ALSA development headers (Debian/Ubuntu: `build-essential pkg-config libasound2-dev`). From the repository root:
+Install stable Rust and native build tools: Windows needs the MSVC C++ Build Tools/Windows SDK; macOS needs Xcode command-line tools; Linux needs a C compiler, `pkg-config` and ALSA development headers (Debian/Ubuntu: `build-essential pkg-config libasound2-dev`). From the repository root:
 
 ```sh
 cargo build --release --locked
 ```
 
-The resulting binary is `target/release/ap-midi-osc-bridge` (`.exe` on Windows). Copy `profiles/` next to it **before running**. `cargo run --release --locked` starts a release binary from `target/release/`; it likewise needs that adjacent folder. Debug builds launched from the repository can fall back to repository profiles. To make a native archive after building for a target:
+The binary is `target/release/ap-midi-osc-bridge` (`.exe` on Windows). Copy `profiles/` beside it **before running**, including when using `cargo run --release`. Debug builds launched from the repository can use source profiles if none are beside the executable.
+
+To package a target-specific build:
 
 ```powershell
 cargo build --release --locked --target x86_64-pc-windows-msvc
 powershell -NoProfile -File scripts/package.ps1 -Target x86_64-pc-windows-msvc
 ```
 
-Use `pwsh` and the corresponding target on other platforms. The manual **Build AP MIDI OSC Bridge** workflow builds Windows x64, macOS ARM64/Intel and Linux x64 artifacts; it uploads workflow artifacts, not a GitHub Release. `scripts/package.ps1` stages the binary, profiles, docs, both control guides, MIT license and dependency notices in a temporary directory, then writes the archive and `.sha256` checksum into `dist/`. The checksum detects corruption, **not** publisher identity. Windows uses the static MSVC runtime; Linux needs compatible system ALSA/libc. Binaries are unsigned/unnotarized. See [STATUS.md](STATUS.md) for evidence and gaps.
+Use `pwsh` and the corresponding target on other platforms. The manual **Build AP MIDI OSC Bridge** workflow targets Windows x64, macOS ARM64/Intel and Linux x64; it uploads artifacts, not GitHub Releases. `scripts/package.ps1` stages the binary, profiles, four reference documents, both HTML/PDF guides, MIT license and dependency notices, then writes an archive and SHA-256 checksum into `dist/`. It replaces published files only after archive creation succeeds.
 
-## Runtime and CLI
+Windows uses the static MSVC runtime; Linux needs compatible system ALSA/libc. Binaries are unsigned/unnotarized. A checksum detects corruption, **not** publisher identity. Historical `dist/` files are not evidence of the current source's build or hardware compatibility.
 
-```text
-ap-midi-osc-bridge --list
-ap-midi-osc-bridge --monitor "#0"
-ap-midi-osc-bridge --verbose
+### Printable guides
+
+HTML is the editable source; PDFs are rendered artifacts. With Chrome or Chromium installed, render both guides from the repository root:
+
+```powershell
+powershell -NoProfile -File scripts/render-guides.ps1 -Browser 'C:\Program Files\Google\Chrome\Application\chrome.exe'
 ```
 
-`--list` enumerates ports without opening MIDI connections; `--monitor INPUT` opens only one input by name or `#index` and sends no MIDI/OSC; `--verbose` logs traffic and pickup counters during normal operation. Only `--list`, `--monitor INPUT` and `--verbose` are supported. Legacy `--input`, `--output`, `--config`, `--export-config`, `--osc`, `--feedback`, `--mixer` and `--direct-tempo` options were removed. `#index` is not permitted for automatic profile matching because it can change after hotplug. `settings.json` beside the executable can override OSC destination and feedback bind addresses, e.g. `{"osc":"127.0.0.1:9090","feedback":"127.0.0.1:9096"}`; absent values use these defaults. Addresses must use the same IP family. OSC is unauthenticated, unencrypted UDP; the bridge accepts feedback only from the configured destination IP.
+On other platforms use `pwsh` and the browser executable's path. The script uses a fresh temporary browser profile, prints without browser headers/footers, and stages both PDFs before replacing either. It does not use your normal browser session or start the bridge. Rendering is not a visual or hardware verification; browser version and installed fonts may affect output.
 
-The bridge polls MIDI inventory about every two seconds, detaches sessions when their selected ports disappear/change, and retries failed attachments after about ten seconds or an inventory change. Per-device errors do not normally stop other sessions. A separate AP feedback socket is shared across sessions; only subscribed, registered routes feed each capability. Reconnect is not an AP-state recovery guarantee. Profile edits are not hot-reloaded.
+## Architecture and runtime
+
+| Source | Responsibility |
+|---|---|
+| `src/main.rs` | CLI, executable-relative profiles/settings lookup, exit handling |
+| `src/midi.rs` | Port inventory/matching and read-only list/monitor tools |
+| `src/runtime.rs` | Discovery, port ownership, per-device lifecycle records and OSC dispatch |
+| `src/ap.rs` | Confirmed AP feedback, shared ownership, held actions and slip timing |
+| `src/profile.rs` | Device identity, declarative configuration and pure preflight |
+| `src/adapters/mod.rs` | Typed adapter variants, one-time loading/validation and lifecycle factory |
+| `src/adapters/declarative.rs` | Note/CC bindings, hardware modes, software layers and feedback |
+| `src/adapters/flx4/` | FLX4 decoding, configuration and pad banks |
+
+Each runtime device record owns its profile, optional live session, retry timestamp and status. The bridge polls MIDI inventory about every two seconds and retries failures after about ten seconds or a port change. It resolves competing claims before attachment, detaches stale sessions before replacements, and normally isolates per-device errors. Runtime requests one fresh AP snapshot after an attachment batch; adapters request snapshots for relevant selection changes. Profiles parse and validate once at process start, not on hotplug. The `adapter.type` selects a typed configuration; attachment/reconnection clones that configuration without reparsing JSON or rerunning preflight. AP registration takes an explicit session owner and still rejects conflicting feedback scales across attached devices.
+
+OSC packets are processed into the shared cache before notifying adapters. Each interested live device receives one batch of unique lowercase addresses, including invalid reports that cleared cached state. Adapters invalidate affected captures first, then refresh once; deck/mode/layer changes still refresh directly. Rendering borrows configuration instead of cloning whole feedback/LED lists. `feedback received` counts addresses processed by successful batches, not packets, MIDI writes or AP acknowledgments. A packet can contain only one message: batching does not promise a complete deck snapshot or a measured speedup.
+
+CLI: `--list` lists ports without opening connections; `--monitor INPUT` passively reads one named input or `#index` without MIDI output/OSC; `--verbose` logs traffic and pickup counters. `#index` is not accepted for automatic matching. See [PROFILES.md](PROFILES.md) for `settings.json` and profile lookup rules.
 
 ## AP wire contract and safety
 
 | Item | Contract |
 |---|---|
-| Destination / feedback | Default UDP `127.0.0.1:9090` / `127.0.0.1:9096`; AP feedback must be enabled and subscribed. |
-| Deck player types | Track, arrangement, clip, sampler and empty have different capabilities; unknown/empty types block unsupported deck actions. |
-| TempoSlider | AP input **and feedback** use float −1..+1 (0 is native tempo); bridge pickup stores `(feedback + 1) / 2`. Mixer position is 0..1, without global tempo scaling. |
-| Missing state | Missing/invalid feedback blocks controls that need pickup or confirmed toggles. Never infer a writable input from a feedback-only route. |
-| Holds | Resolve physical press destinations before layer/deck changes; retain that destination until release. Shared AP actions and last-held slip loops must not be released prematurely by another device. |
-| Failure | Detach and Ctrl+C attempt releases and device shutdown; UDP loss, crashes or force-kills cannot guarantee AP receives them. |
+| Transport | UDP to `127.0.0.1:9090`, feedback on `127.0.0.1:9096` by default; matching IP families required. Only the configured destination IP's feedback is accepted; UDP is unauthenticated/unencrypted. |
+| Player types | Track, arrangement, clip and sampler routes differ; FLX4 blocks unsupported deck actions for unknown/empty types. |
+| Scaling | TempoSlider input/feedback are −1..+1, normalized internally to `(value + 1) / 2`; mixer positions are 0..1. FLX4's two central tempo codes send exact zero. |
+| Pickup | Initial reports establish a baseline, not movement. Missing/invalid feedback blocks capture; delayed feedback must not undo a captured control. AP does not identify mouse-only writers. |
+| Ownership | Multiple devices may share a route. Confirmed switch feedback drives toggles; held releases retain the original resolved destination across Shift/mode/layer/deck changes. |
+| Failure | Preserve bounded MIDI queues, bounded OSC processing, per-device cleanup and best-effort releases. Reconnect cannot guarantee recovery from UDP loss, AP restarts, crashes or force-kills. |
 
-For selective subscriptions, use [MAPPING.md#feedback-profiles-and-safety](MAPPING.md#feedback-profiles-and-safety). The FLX4's 14-bit tempo fader sends `2 * physical_position - 1`, with its two central MIDI codes mapped to exact zero; declarative absolute controls use the appropriate MIDI resolution and opt into bipolar mapping explicitly. `Filter1`/`Filter2` input paths remain inferred from an AP change note, not confirmed against all AP versions. AP may require a control to be visible.
+See [MAPPING.md](MAPPING.md) for exact assignments, subscriptions and unsupported controls. Feedback addresses alone do not prove writable inputs. `Filter1`/`Filter2` full input routes remain inferred from an AP change note, not confirmed across AP versions; AP may require controls to be visible.
 
-## Change boundaries
+## Adding another controller
 
-- `src/main.rs`: CLI, executable-relative profile/settings lookup; `src/runtime.rs`: discovery, port ownership, sessions and OSC loop; `src/ap.rs`: AP feedback, shared ownership and held-action cleanup. Hardware capabilities and schema/validation live in the other `src/` modules; inspect the current source before changing a control.
-- `profiles/flx4.json` and `profiles/launch-control-3.json`: supplied hardware selectors and editable default assignments. `PROFILES.md` documents the version-2 schema, inline FLX4 pad banks and unsupported protocols. Keep device-specific output and keepalive off unrelated hardware.
-- `MAPPING.md`, `USER-GUIDE.md`, printable HTML/PDF sheets and `STATUS.md`: synchronize changed controls, compatibility claims and validation evidence. Update `scripts/package.ps1` whenever shipped docs change.
+1. **Establish the exact device.** Record model/revision, firmware, OS, USB/DIN MIDI versus HID, hardware mode, desired layout and AP version. Similar product names do not establish protocol compatibility. Do not inspect private AP mappings, change persistent modes, install drivers/firmware or probe hardware without authorization.
+2. **Gather protocol evidence.** Read the exact model's official implementation/programmer's reference. A maintained implementation can corroborate hardware details, not AP mappings. Record URL plus page/section or repository revision/function, and distinguish documented, observed, inferred and unknown facts. Check PDF tables directly if extraction loses columns; respect licenses.
+3. **Inventory both directions.** For each control/mode, record input port/channel/number/value and press/release semantics, output bytes/effects, and source/confidence. Check channel numbering (1–16 versus wire 0–15), decimal/hex, Note Off/zero-velocity Note On, shifted/short/long reports, CC resolution/MSB order, relative encoding, output echoes, mode confirmation and keepalive. Unknown output means omit that feedback—not borrow another controller's SysEx.
+4. **Use the smallest implementation.** Documented Note/CC controls belong in a declarative profile with unique named selectors. Start input-only if output is unestablished. Use modes/layers/hooks only where justified; leave unknown gestures unassigned. Unsupported transports/decoders need a reviewed Rust adapter, not invented JSON fields or a speculative plugin system. Do not send FLX4 keepalive or LC3 DAW messages to unrelated hardware.
+5. **Establish AP semantics separately.** Record `gesture → MIDI event → selected target → AP input route/value → required feedback`. Verify argument scale and trigger/toggle/momentary behavior. Account for track/arrangement/clip/sampler differences. An undocumented route stays unassigned; do not pretend waveform seek provides scratching or unrelated feedback proves cue occupancy.
+6. **Preserve the contracts above.** Physical inputs must not collide across devices; release destinations survive selection changes. Keep last-held-repeat priority, real-feedback pickup, echo suppression and independent cleanup. Modes and layers remain distinct. Generic features unused by bundled profiles are not automatically obsolete.
+7. **Deliver with evidence.** Update profiles, mappings, schema reference and printable guides together. Distinguish source inspection, compilation and observed hardware/AP behavior. Do not publish releases or modify installations as a side effect. If blocked, record sources, attempted paths, the unresolved fact and the smallest input needed.
 
-Do not modify AP mappings/settings, install firmware, publish a release or probe hardware as a side effect of editing this project. Establish AP input semantics separately from feedback semantics, and preserve normalized pickup, physical release identity, bounded queues and OSC processing. A new capability should document unresolved routes instead of guessing them.
+`--list` does not open devices. Use `--monitor INPUT` only for authorized capture; it does not initialize hardware, so silence is inconclusive. Never run the normal bridge to discover an unsupported device's protocol.
 
-## References
+## Evidence and limits
 
-- [AlphaTheta DDJ-FLX4 MIDI message list](https://downloads.support.alphatheta.com/software_info/dj-controllers/DDJ-FLX4/DDJ-FLX4_MIDI_message_List_E1.pdf), pp. 1–3 and p. 5 footnote 3: messages and SYNC timing.
-- [AP OSC guide §13.4](https://autopilot.audio/user-guide/index.html?c=c13-4): OSC routes/feedback; §4.6 covers Browser CONTROL MODE.
-- [Novation LC3 DAW-mode guide](https://userguides.novationmusic.com/hc/en-gb/articles/33742551451666-Launch-Control-3-programmer-s-DAW-mode), “Mode report and select” and “Colouring the surface”: device-specific mode and feedback protocol.
+The workflow defines four build targets; that is not proof that each target builds at every revision. A successful local compile applies only to its source revision/target, not controller behavior. Current FLX4/LC3 joint hardware operation and AP end-to-end behavior have not been established by observation. Do not inherit coverage from earlier binaries or similarly named devices.
+
+Keep experimental-use and upstream bug-reporting instructions prominent in [README.md](README.md). Record build/render evidence separately from hardware observations; none of the former establishes the latter. Preserve both guides and dependency notices when changing packaging.
+
+## Protocol references
+
+The exact-device and AP references are maintained in [PROFILES.md](PROFILES.md#protocol-references); detailed AP route references accompany [MAPPING.md](MAPPING.md#protocol-references).

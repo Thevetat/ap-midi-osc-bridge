@@ -22,13 +22,13 @@ A Windows installation can keep the executable and profiles in `%LOCALAPPDATA%\a
 | Device | Included layout |
 |---|---|
 | **Pioneer DJ DDJ-FLX4** | Four-deck selection (left 1↔3, right 2↔4 via Shift+LOAD), content-aware pads, mixer/tempo pickup, transport and LED feedback. [Full FLX4 controls](MAPPING.md). |
-| **Novation Launch Control 3 (compact)** | Built-in DAW Mixer/Control modes over the **DAW USB ports**, not the Main MIDI port or the XL 3. Mixer mode maps CH1–4 EQ; Control mode maps CH1–4 Filter1/Filter2. Both provide Browser via top-right encoder. Bottom buttons default to Hot Cues 1–8; Track ◀/▶ selects Deck 1–4. Function toggles to the existing CH1–4 Mute/headphone Cue buttons. Screen shows deck/layer; cue colours identify slots, not populated cues. No Novation Components remapping is needed. |
+| **Novation Launch Control 3 (compact)** | **DAW USB ports**, not Main MIDI or XL 3. CH1–4 EQ/filter, Browser, four-deck Hot Cues and a Mute/headphone Cue button layer. Screen shows deck/layer; fixed cue colours identify slots, not occupancy. No Components remapping needed. [Full LC3 controls](MAPPING.md#launch-control-3-compact-daw-usb-ports). |
 
-The LC3 needs AP feedback subscriptions for all four channels' `EQ/Low`, `EQ/Mid`, `EQ/High`, `Filter1`, `Filter2`, `Mute` and `Cue`; **Toggle All** includes these. A controller with missing feedback may have blocked pickup/toggles rather than moving AP blindly. Leave `profiles/launch-control-3.json` on its DAW-port selectors; if OS port names differ, use `--list` and edit the selectors. A mode is active only after the LC3 reports it. Browser needs AP CONTROL MODE.
+Missing AP feedback can block pickup/toggles; LC3 also needs a confirmed hardware mode report. See [operation and troubleshooting](MAPPING.md) before changing assignments.
 
 Launch Control 3: [printable control guide](LAUNCH-CONTROL-3-GUIDE.pdf) · [offline HTML guide](LAUNCH-CONTROL-3-GUIDE.html).
 
-FLX4: [printable control guide](CONTROL-GUIDE.pdf) · [offline HTML guide](CONTROL-GUIDE.html). These retain legacy FLX4 Pilot naming and a removed `--direct-tempo` reference; use the setup instructions above and [MAPPING.md](MAPPING.md) for current behaviour. For pickup, pads, sampler steps and troubleshooting, see the [user guide](USER-GUIDE.md).
+FLX4: [printable control guide](CONTROL-GUIDE.pdf) · [offline HTML guide](CONTROL-GUIDE.html).
 
 Custom assignments belong in the JSON profiles. The bridge never changes AP audio settings or firmware.
 
@@ -42,13 +42,14 @@ cd ap-midi-osc-bridge
 cargo build --release --locked
 ```
 
-The executable is `target/release/ap-midi-osc-bridge` (`.exe` on Windows). **Copy `profiles/` into `target/release/` before running that release binary**, or keep the folder beside the executable when moving it. Debug builds run from the repository can use the repository's `profiles/` as a development fallback. The manual **Build AP MIDI OSC Bridge** workflow packages Windows x64, macOS ARM64/Intel and Linux x64 artifacts; it does not publish a GitHub Release. Binaries are unsigned/unnotarized, and Linux builds need compatible system ALSA/libc. See the [developer reference](DEVELOPMENT.md) for packaging/CLI details and [release status](STATUS.md) for validation gaps.
+The executable is `target/release/ap-midi-osc-bridge` (`.exe` on Windows). **Copy `profiles/` into `target/release/` before running that release binary**, or keep the folder beside the executable when moving it. Debug builds run from the repository can use the repository's `profiles/` as a development fallback. The manual **Build AP MIDI OSC Bridge** workflow packages Windows x64, macOS ARM64/Intel and Linux x64 artifacts; it does not publish a GitHub Release. Binaries are unsigned/unnotarized, and Linux builds need compatible system ALSA/libc. See the [developer reference](DEVELOPMENT.md) for packaging and [evidence limits](DEVELOPMENT.md#evidence-and-limits).
 
 `--list` enumerates ports without opening MIDI connections; `--monitor INPUT` logs one input only, with no MIDI output or OSC; `--verbose` shows MIDI input and OSC sends (not proof of an AP state change). Optional `settings.json` beside the executable can override only the default endpoints, for example `{"osc":"127.0.0.1:9090","feedback":"127.0.0.1:9096"}`. If omitted, those defaults apply.
 
 ## Limits
 
 - AP's `TempoSlider` input **and feedback** must be bipolar **−1..+1** (0 = native tempo); old 0–1 APIs are unsupported. Missing feedback blocks normal tempo pickup. `Filter1`/`Filter2` full input paths are inferred from an AP change note while its published mixer table still uses older names; confirm against your AP version.
-- FLX4 jog/scratch, repeat scrubbing, crossfader and FX are not mapped. Clip/sampler coverage differs from track/arrangement; see [MAPPING.md](MAPPING.md). Hardware/OS compatibility and FLX4+LC3 joint operation have not been established across all systems. OSC is unauthenticated UDP; network loss/crashes cannot guarantee release delivery.
+- FLX4 jog/scratch, repeat scrubbing, crossfader and FX are not mapped. Clip/sampler coverage differs from track/arrangement; see [MAPPING.md](MAPPING.md).
+- A supplied profile or successful compile is not hardware verification. Current FLX4+LC3 joint operation and AP end-to-end behavior have not been established by observation. OSC is unauthenticated UDP; network loss/crashes cannot guarantee release delivery.
 
-[Editable profile format](PROFILES.md) · [Adding another controller](CONTROLLER-PORTING.md) · [MIT license](LICENSE). Independent project, not affiliated with AlphaTheta/Pioneer DJ, Novation or AUTO/PILOT.
+[Editable profile format](PROFILES.md) · [Adding another controller](DEVELOPMENT.md#adding-another-controller) · [MIT license](LICENSE). Independent project, not affiliated with AlphaTheta/Pioneer DJ, Novation or AUTO/PILOT.

@@ -1,7 +1,7 @@
 //! Shared OSC transport, confirmed AP state and held controls for all devices.
 use anyhow::{bail, Result};
 use rosc::{OscMessage, OscPacket, OscType};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SlipTiming {
     Straight,
@@ -107,7 +107,6 @@ pub struct Ap {
     socket: UdpSocket,
     destination: SocketAddr,
     kinds: HashMap<String, FeedbackKind>,
-    registration_owner: String,
     interests: HashMap<String, HashSet<String>>,
     values: HashMap<String, f32>,
     texts: HashMap<String, String>,
@@ -128,7 +127,6 @@ impl Ap {
             socket,
             destination,
             kinds: HashMap::new(),
-            registration_owner: String::new(),
             interests: HashMap::new(),
             values: HashMap::new(),
             texts: HashMap::new(),
@@ -141,9 +139,6 @@ impl Ap {
             sent: Cell::new(0),
             accepted: 0,
         }
-    }
-    pub fn registration_owner(&mut self, owner: &str) {
-        self.registration_owner = owner.into();
     }
     /// Remove one disconnected device without discarding another device's state.
     pub fn remove_session(&mut self, owner: &str) {
@@ -196,9 +191,6 @@ impl Ap {
             }
             self.slip_modes.remove(&key);
         }
-        if self.registration_owner == owner {
-            self.registration_owner.clear();
-        }
     }
     pub fn interested(&self, owner: &str, address: &str) -> bool {
         self.interests
@@ -221,7 +213,7 @@ impl Ap {
             );
         }
     }
-    pub fn register(&mut self, address: &str, kind: FeedbackKind) -> Result<()> {
+    pub fn register(&mut self, owner: &str, address: &str, kind: FeedbackKind) -> Result<()> {
         if !crate::profile::valid_address(address) || address.contains('{') {
             bail!("Invalid resolved feedback route {address}");
         }
@@ -236,10 +228,7 @@ impl Ap {
             }
             self.kinds.insert(key.clone(), kind);
         }
-        self.interests
-            .entry(key)
-            .or_default()
-            .insert(self.registration_owner.clone());
+        self.interests.entry(key).or_default().insert(owner.into());
         Ok(())
     }
     pub fn value(&self, address: &str) -> Option<f32> {

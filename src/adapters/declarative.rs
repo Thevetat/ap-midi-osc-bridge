@@ -2,7 +2,7 @@
 use super::Adapter;
 use crate::{
     ap::SharedAp,
-    profile::{Behavior, Binding, DeviceProfile, FeedbackKind, MidiKind},
+    profile::{Behavior, Binding, DeclarativeConfig, FeedbackKind, MidiKind},
 };
 use anyhow::{anyhow, Result};
 use midir::MidiOutputConnection;
@@ -16,7 +16,8 @@ type Physical = (usize, MidiKind, u8, u8);
 
 pub struct Declarative {
     name: String,
-    profile: DeviceProfile,
+    profile: DeclarativeConfig,
+    input_count: usize,
     outputs: Vec<MidiOutputConnection>,
     ap: SharedAp,
     mode: Option<String>,
@@ -37,24 +38,13 @@ pub struct Declarative {
 impl Declarative {
     pub fn new(
         name: String,
-        profile: DeviceProfile,
+        profile: DeclarativeConfig,
+        input_count: usize,
         outputs: Vec<MidiOutputConnection>,
         ap: SharedAp,
     ) -> Result<Self> {
-        profile.validate()?;
-        if profile.protocol != "declarative" {
-            return Err(anyhow!("{}: Declarative adapter supports protocol 'declarative', not {:?}; select the corresponding protocol engine", name, profile.protocol));
-        }
-        if outputs.len() != profile.outputs.len() {
-            return Err(anyhow!(
-                "{}: expected {} MIDI outputs, got {}",
-                name,
-                profile.outputs.len(),
-                outputs.len()
-            ));
-        }
         for (address, kind) in profile.feedback_interests() {
-            ap.borrow_mut().register(&address, kind)?;
+            ap.borrow_mut().register(&name, &address, kind)?;
         }
         let mode = if profile.modes.len() == 1 && profile.modes[0].reports.is_empty() {
             Some(profile.modes[0].name.clone())
@@ -64,6 +54,7 @@ impl Declarative {
         Ok(Self {
             name,
             profile,
+            input_count,
             outputs,
             ap,
             mode,
@@ -145,6 +136,10 @@ impl Declarative {
         format!("{}:{}:{:?}:{}:{}", self.name, key.0, key.1, key.2, key.3)
     }
 
+    fn mode_confirmed(&self) -> bool {
+        self.mode.is_some() || self.profile.modes.iter().all(|m| m.reports.is_empty())
+    }
+
     fn active(&self, mode: &Option<String>) -> bool {
         mode.as_ref()
             .map_or(true, |m| self.mode.as_ref() == Some(m))
@@ -160,7 +155,7 @@ impl Declarative {
     }
 
     fn render_selection(&mut self) -> Result<()> {
-        if self.mode.is_none() && self.profile.modes.iter().any(|m| !m.reports.is_empty()) {
+        if !self.mode_confirmed() {
             return Ok(());
         }
         // These are local selection indicators, never claims about AP cue occupancy.
@@ -206,10 +201,7 @@ impl Declarative {
             .filter(|b| b.layer.is_some())
             .map(|b| (b.input, b.kind, b.channel, b.number))
             .collect();
-        self.msb.retain(|key, _| !affected.contains(key));
-        self.positions.retain(|(key, _), _| !affected.contains(key));
-        self.captured.retain(|(key, _)| !affected.contains(key));
-        self.recenter_seen.retain(|key| !affected.contains(key));
+        self.rearm_controls(&affected);
         for f in &self.profile.feedback {
             if f.layer.is_some() {
                 let status = (match f.midi_kind {
@@ -227,28 +219,28 @@ impl Declarative {
     }
 
     fn refresh(&mut self) -> Result<()> {
-        if self.mode.is_none() && self.profile.modes.iter().any(|m| !m.reports.is_empty()) {
+        if !self.mode_confirmed() {
             return Ok(());
         }
-        let feedback = self.profile.feedback.clone();
-        for f in feedback {
+        for index in 0..self.profile.feedback.len() {
+            let f = &self.profile.feedback[index];
             if !self.active(&f.mode) || !self.active_layer(&f.layer) {
                 continue;
             }
             let address = self.resolve(&f.address, f.deck_side);
             let raw = self.ap.borrow().value(&address);
-            if raw.is_none() && matches!(f.kind, FeedbackKind::Position) {
+            if raw.is_none() && matches!(f.render, FeedbackKind::Position {}) {
                 let status = 0xb0 | (f.channel - 1);
                 self.sent.remove(&(f.output, status, f.number));
             }
-            let code = match &f.kind {
+            let code = match &f.render {
                 FeedbackKind::Led { on, off, unknown } => match raw {
                     Some(v) if v.is_finite() && (0.0..=1.0).contains(&v) => {
                         Some(if v >= 0.5 { *on } else { *off })
                     }
                     _ => *unknown,
                 },
-                FeedbackKind::Position => raw
+                FeedbackKind::Position {} => raw
                     .filter(|v| v.is_finite() && (0.0..=1.0).contains(v))
                     .map(|v| (v * 127.0).round() as u8),
             };
@@ -259,9 +251,13 @@ impl Declarative {
                 } | (f.channel - 1);
                 let echo_input = f
                     .echo_input
-                    .or_else(|| (self.profile.inputs.len() == 1).then_some(0));
+                    .or_else(|| (self.input_count == 1).then_some(0));
                 let wrote = self.emit(f.output, &[status, f.number, code], true, echo_input)?;
-                if wrote && matches!(f.kind, FeedbackKind::Position) && f.midi_kind == MidiKind::Cc
+                // Reborrow config after emit mutates output/echo caches; no list clone.
+                let f = &self.profile.feedback[index];
+                if wrote
+                    && matches!(f.render, FeedbackKind::Position {})
+                    && f.midi_kind == MidiKind::Cc
                 {
                     // Position-synchronized endless encoders are already at the confirmed AP
                     // value. Mark that physical/target pair captured; host echoes are ignored.
@@ -303,9 +299,7 @@ impl Declarative {
             .bindings
             .iter()
             .filter(|b| {
-                (self.mode.is_some() || self.profile.modes.iter().all(|m| m.reports.is_empty()))
-                    && self.active(&b.mode)
-                    && self.active_layer(&b.layer)
+                self.mode_confirmed() && self.active(&b.mode) && self.active_layer(&b.layer)
             })
             .filter_map(|b| match &b.behavior {
                 Behavior::Recenter { output, center, .. } => {
@@ -348,6 +342,13 @@ impl Declarative {
         Ok(())
     }
 
+    fn rearm_controls(&mut self, affected: &HashSet<Physical>) {
+        self.msb.retain(|key, _| !affected.contains(key));
+        self.positions.retain(|(key, _), _| !affected.contains(key));
+        self.captured.retain(|(key, _)| !affected.contains(key));
+        self.recenter_seen.retain(|key| !affected.contains(key));
+    }
+
     fn rearm_deck_side(&mut self, side: usize) {
         let affected: HashSet<Physical> = self
             .profile
@@ -365,15 +366,12 @@ impl Declarative {
                         }
                         Behavior::SelectDeck { .. }
                         | Behavior::StepDeck { .. }
-                        | Behavior::CycleLayer => false,
+                        | Behavior::CycleLayer {} => false,
                     }
             })
             .map(|b| (b.input, b.kind, b.channel, b.number))
             .collect();
-        self.msb.retain(|key, _| !affected.contains(key));
-        self.positions.retain(|(key, _), _| !affected.contains(key));
-        self.captured.retain(|(key, _)| !affected.contains(key));
-        self.recenter_seen.retain(|key| !affected.contains(key));
+        self.rearm_controls(&affected);
         for f in &self.profile.feedback {
             if f.deck_side == side && f.address.contains("{deck}") {
                 let status = (match f.midi_kind {
@@ -383,7 +381,7 @@ impl Declarative {
                 self.sent.remove(&(f.output, status, f.number));
                 if let Some(input) = f
                     .echo_input
-                    .or_else(|| (self.profile.inputs.len() == 1).then_some(0))
+                    .or_else(|| (self.input_count == 1).then_some(0))
                 {
                     self.echoes.remove(&(input, status, f.number));
                 }
@@ -489,7 +487,7 @@ impl Declarative {
                     self.select_deck(binding.deck_side, deck)?;
                 }
             }
-            Behavior::CycleLayer => {
+            Behavior::CycleLayer {} => {
                 if value != 0 {
                     self.cycle_layer()?;
                 }
@@ -591,15 +589,11 @@ impl Adapter for Declarative {
         self.render_selection()?;
         self.refresh()?;
         self.recenter_controls()?;
-        self.ap
-            .borrow_mut()
-            .send("/AutoPilot/Feedback/Resend", OscType::Int(1))?;
         Ok(())
     }
 
     fn input(&mut self, port: usize, bytes: &[u8]) -> Result<()> {
-        if port >= self.profile.inputs.len() || bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127
-        {
+        if port >= self.input_count || bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127 {
             return Ok(());
         }
         let (kind, channel) = match bytes[0] & 0xf0 {
@@ -650,7 +644,7 @@ impl Adapter for Declarative {
                 return Ok(());
             }
         }
-        if self.mode.is_none() && self.profile.modes.iter().any(|m| !m.reports.is_empty()) {
+        if !self.mode_confirmed() {
             return Ok(());
         }
         let binding = self
@@ -678,7 +672,7 @@ impl Adapter for Declarative {
                 | Behavior::Toggle { .. }
                 | Behavior::SelectDeck { .. }
                 | Behavior::StepDeck { .. }
-                | Behavior::CycleLayer
+                | Behavior::CycleLayer {}
         ) {
             if kind == MidiKind::Note || kind == MidiKind::Cc {
                 if value == 0
@@ -705,38 +699,26 @@ impl Adapter for Declarative {
         Ok(())
     }
 
-    fn feedback(&mut self, address: &str) -> Result<()> {
-        let interested: Vec<_> = self
-            .profile
-            .bindings
-            .iter()
-            .filter_map(|b| match &b.behavior {
-                Behavior::Absolute { address: a, .. } | Behavior::Absolute14 { address: a, .. } => {
-                    Some((b.input, b.kind, b.channel, b.number, b.deck_side, a.clone()))
+    fn feedback(&mut self, addresses: &[&str]) -> Result<()> {
+        {
+            let ap = self.ap.borrow();
+            for b in &self.profile.bindings {
+                let target = match &b.behavior {
+                    Behavior::Absolute { address, .. } | Behavior::Absolute14 { address, .. } => {
+                        address
+                    }
+                    _ => continue,
+                };
+                let address = self.resolve(target, b.deck_side).to_ascii_lowercase();
+                if !addresses.contains(&address.as_str()) {
+                    continue;
                 }
-                _ => None,
-            })
-            .collect();
-        let confirmed = self.ap.borrow().value(address);
-        for (input, kind, channel, number, side, target) in interested {
-            let resolved = self.resolve(&target, side);
-            if !resolved.eq_ignore_ascii_case(address) {
-                continue;
-            }
-            let identity = (
-                (input, kind, channel, number),
-                resolved.to_ascii_lowercase(),
-            );
-            // Keep pickup latched through delayed AP reports, just like FLX4.
-            // Only invalid feedback or a known bridge takeover revokes capture;
-            // synchronized endless encoders are then updated by refresh().
-            if confirmed.is_none()
-                || !self
-                    .ap
-                    .borrow()
-                    .control_owned(&self.owner(identity.0), address)
-            {
-                self.captured.remove(&identity);
+                let key = (b.input, b.kind, b.channel, b.number);
+                // Keep capture through delayed reports. Invalidate all affected
+                // controls before refresh synchronizes endless encoders once.
+                if ap.value(&address).is_none() || !ap.control_owned(&self.owner(key), &address) {
+                    self.captured.remove(&(key, address));
+                }
             }
         }
         self.refresh()

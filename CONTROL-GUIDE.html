@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FLX4 Pilot — control guide 0.3.4</title>
+<title>AP MIDI OSC Bridge — FLX4 control guide 0.3.4</title>
 <style>
 @page { size: A4 landscape; margin: 10mm; }
 * { box-sizing: border-box; }
@@ -51,15 +51,15 @@ a { color: #087d85; }
 </head>
 <body>
 <section class="sheet">
-<header><div><small>DDJ-FLX4 → AUTO/PILOT · STOCK FIRMWARE · NATIVE BRIDGE</small><h1>FLX4 <span>PILOT</span></h1></div><div class="meta"><b>PERFORMANCE MAP · 0.3.4</b><br>Any content on any deck<br>Track / arrangement layout below</div></header>
-<div class="rule"><b>TEMPO PICKUP.</b> Requires AP’s −1…+1 TempoSlider API. OSC Feedback: Toggle All on, including TempoSlider. Leave <code>--direct-tempo</code> off.</div>
+<header><div><small>DDJ-FLX4 → AUTO/PILOT · STOCK FIRMWARE · NATIVE BRIDGE</small><h1>FLX4 <span>controls</span></h1></div><div class="meta"><b>PERFORMANCE MAP · 0.3.4</b><br>Any content on any deck<br>Track / arrangement layout below</div></header>
+<div class="rule"><b>TEMPO PICKUP.</b> Requires AP’s −1…+1 TempoSlider API. OSC Feedback: Toggle All on, including TempoSlider. Move the fader through AP’s reported value to pick up.</div>
 <div class="controls">
 <div class="control"><b>SHIFT + LOAD</b><br>Left: Deck 1 ↔ 3<br>Right: Deck 2 ↔ 4</div>
-<div class="control"><b>FADERS / KNOBS</b><br>Mixer + tempo: pickup<br>Shift + filter: resonance</div>
+<div class="control"><b>FADERS / KNOBS</b><br>Mixer + tempo: pickup<br>Shift + filter: Filter2</div>
 <div class="control"><b>BROWSE / LOAD</b><br>Turn: up/down · press: enter<br>Shift + press: back · LOAD: selected deck</div>
 <div class="control"><b>TRANSPORT</b><br>SYNC tap: sync · hold: master<br>CUE: hold · Shift + CUE: Grid Start</div>
 </div>
-<p><b>Decks:</b> hold that side’s Shift and tap LOAD. Left 1↔3 and right 2↔4 switch independently; check the console/title. Other decks keep playing; mixer/tempo pickup re-arms.</p>
+<p><b>Decks:</b> hold that side’s Shift and tap LOAD. Left 1↔3 and right 2↔4 switch independently; check the console. Other decks keep playing; mixer/tempo pickup re-arms.</p>
 <p><b>Banks:</b> mode button = normal bank; Shift + mode = alternate bank, then release Shift. Shift + pad = that bank’s shifted action. Pads 1–4 top; 5–8 bottom.</p>
 <div class="banks">
 <article class="bank"><header><h3>HOT CUE</h3><small>Track / clip cues · arrangement override on page 2</small></header><div class="pads">
@@ -88,10 +88,10 @@ a { color: #087d85; }
 </div><p class="note">Marker pages: arrangements only. Switch pads set an explicit state.</p></article>
 </div>
 <div class="legend"><div><b>No hidden jump range.</b> Shift + a mode button selects a bank; holding Shift + a pad is a different gesture. Each deck remembers its bank.</div><div><b>Watch the console.</b> It shows LEFT / RIGHT deck, player type, bank and selected repeat timing. Unsupported type-specific controls are blocked, not guessed.</div></div>
-<footer><span>Independent project · Not affiliated with AlphaTheta / AUTO/PILOT</span><span>Windows build · Hardware behaviour unverified · 1 / 2</span></footer>
+<footer><span>Independent project · Not affiliated with AlphaTheta / AUTO/PILOT</span><span>AP MIDI OSC Bridge · Hardware behaviour unverified · 1 / 2</span></footer>
 </section>
 <section class="sheet">
-<header><div><small>FLX4 PILOT · 0.3.4</small><h1>Content-aware <span>control</span></h1></div><div class="meta">No fixed deck roles<br>AP PlayerType feedback selects the layout</div></header>
+<header><div><small>AP MIDI OSC BRIDGE · FLX4 · 0.3.4</small><h1>Content-aware <span>control</span></h1></div><div class="meta">No fixed deck roles<br>AP PlayerType feedback selects the layout</div></header>
 <div class="two">
 <div>
 <h2>Arrangement → marker pages</h2>
@@ -128,7 +128,7 @@ a { color: #087d85; }
 </div>
 <p>Hold that side’s Shift, tap LOAD, then release Shift. The sides switch independently; startup/restart selects <b>1 / 2</b>.</p>
 <ul>
-<li><b>Check the console/title</b> for the selected deck. Mode lights show the bank, not the deck number.</li>
+<li><b>Check the console</b> for the selected deck. Mode lights show the bank, not the deck number.</li>
 <li><b>Controls follow selection:</b> transport, pads, main mixer channel, headphone CUE, LEDs/meter and ordinary LOAD.</li>
 <li><b>Other decks keep playing.</b> Selection does not load, stop, sync or take master. Each deck retains its bank and repeat timing.</li>
 <li><b>Pickup re-arms:</b> mixer and tempo controls wait until hardware reaches AP’s reported position. Missing feedback blocks pickup.</li>

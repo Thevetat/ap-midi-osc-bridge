@@ -78,7 +78,7 @@ impl Action {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PadLayout {
     pub name: String,
@@ -88,7 +88,7 @@ pub struct PadLayout {
     pub shifted_pads: Option<Vec<Option<Action>>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Bank {
     pub name: String,
@@ -120,7 +120,7 @@ impl Bank {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pads {
     pub banks: Vec<Bank>,

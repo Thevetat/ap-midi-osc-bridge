@@ -4,25 +4,33 @@ Put one `*.json` per controller in `profiles/` beside `ap-midi-osc-bridge.exe` (
 
 The included [`profiles/flx4.json`](profiles/flx4.json) and [`profiles/launch-control-3.json`](profiles/launch-control-3.json) hold the default AP assignments. Editing a binding does not require changing Rust. **Do not send FLX4 keepalive or LC3 DAW output to another device.** Start from the exact device's published MIDI specification; unknown messages should stay unassigned.
 
+## Profile structure
+
+Required top-level fields: `version:2`, `name`, `inputs` (1–8 named selectors), and `adapter`. Optional `outputs` defaults to an empty array (0–8 selectors). The adapter is an object with an explicit `type`: `declarative` or `flx4`, followed by that adapter's settings. All objects reject unknown fields; there are no alternate or backward-compatible profile shapes. Device identity and port selectors stay outside the adapter.
+
+Profiles are parsed into typed configuration and validated at discovery, before opening MIDI ports. Reconnects reuse that configuration; only restarting reloads file edits.
+
 ## Declarative JSON (version 2)
 
 ```json
 {
   "version": 2,
   "name": "Example MIDI controller",
-  "protocol": "declarative",
   "inputs": ["YOUR UNIQUE MIDI INPUT"],
   "outputs": [],
-  "bindings": [
-    {"input":0,"kind":"note","channel":1,"number":36,
-     "behavior":{"type":"button","address":"/AutoPilot/Deck/{deck}/PlayPause"}},
-    {"input":0,"kind":"cc","channel":1,"number":7,
-     "behavior":{"type":"absolute","address":"/AutoPilot/Mixer/CH1/Volume"}}
-  ]
+  "adapter": {
+    "type": "declarative",
+    "bindings": [
+      {"input":0,"kind":"note","channel":1,"number":36,
+       "behavior":{"type":"button","address":"/AutoPilot/Deck/{deck}/PlayPause"}},
+      {"input":0,"kind":"cc","channel":1,"number":7,
+       "behavior":{"type":"absolute","address":"/AutoPilot/Mixer/CH1/Volume"}}
+    ]
+  }
 }
 ```
 
-Required fields: `version:2`, `name`, `inputs` (1–8 selectors). Optional: `protocol` (defaults to `declarative`), `outputs` (0–8 selectors), `modes`, `layers`, `deck_feedback`, `bindings`, `feedback`, `startup`, `periodic`, `period_ms` (default 200), `shutdown`. Input/output array indices are **zero-based**, while declarative MIDI channels are **1–16** and Note/CC numbers and values **0–127**. Routes begin `/AutoPilot/` and may use `{deck}`; a feedback route does **not** prove an AP input with that path is writable. `deck_side` defaults to 0; `select_deck` chooses deck 1–4 for that side.
+Inside `adapter`, `type:"declarative"` is required. Optional settings: `modes`, `layers`, `deck_feedback`, `bindings`, `feedback`, `startup`, `periodic`, `period_ms` (default 200), `shutdown`. Lists default to empty. The table below describes these adapter settings. Input/output array indices are **zero-based**, while declarative MIDI channels are **1–16** and Note/CC numbers and values **0–127**. Routes begin `/AutoPilot/` and may use `{deck}`; a feedback route does **not** prove an AP input with that path is writable. `deck_side` defaults to 0; `select_deck` chooses deck 1–4 for that side.
 
 | Feature | Mapping fields |
 |---|---|
@@ -31,16 +39,24 @@ Required fields: `version:2`, `name`, `inputs` (1–8 selectors). Optional: `pro
 | Selection indicators | `deck_feedback:[{"deck":1,"deck_side":0,"messages":[{"output":0,"bytes":[176,103,0]}]}]` sends local deck indicators. Selected-deck hooks and the current layer's `on_enter` hooks are reapplied after selection or confirmed hardware-mode changes. They are not AP state feedback. Up to 16 layers and 16 unique side/deck entries; each hook has the same 32-message/64-byte SysEx bounds as lifecycle hooks. |
 | Buttons | `behavior:{"type":"button","address":"/AutoPilot/...","press":1,"release":0}`; omit `release` for a trigger. `toggle` requires confirmed 0/1 AP feedback; `select_deck` has `deck:1..4`; `step_deck` has `delta:-1` or `1` and stops at Deck 1/4. An optional binding-level `press_value:127` accepts only that nonzero button value (useful to exclude LED-colour echoes); omitted means any nonzero press. Held releases retain their original resolved destination across layer changes. |
 | Continuous | `absolute` (7-bit CC), `absolute_14` (MSB CC 0–31 plus LSB number+32), `relative` (two's-complement CC, `up`/`down` routes) and `recenter` (`up`/`down`, `output`, optional `center` default 64). Absolute uses `address`, optional `pickup` (default true) and `bipolar` (false = AP 0..1; true = AP −1..+1 with matching feedback normalized). Enable bipolar for an AP route such as TempoSlider only when its wire scale requires it. Missing feedback blocks pickup. Recenter's first non-echo report after changing layer is a baseline and can consume the first turn. |
-| Feedback | `address`, `output`, `midi_kind` (`note`/`cc`), `channel`, `number`, optional `mode`, `layer`, `deck_side`, `echo_input`, then `kind:"led"` with optional `on`/`off`/`unknown`, or `kind:"position"` for AP-synchronized encoders. For a single input, echo port 0 is inferred. Echo suppression matches expected values for up to 500 ms; identical physical reports may be dropped, and it is not an acknowledgment. |
+| Feedback | `address`, `output`, `midi_kind` (`note`/`cc`), `channel`, `number`, optional `mode`, `layer`, `deck_side`, `echo_input`, then required `render:{"kind":"led","on":127,"off":0}` (colours optional; `unknown` optionally supplies the missing-feedback colour), or `render:{"kind":"position"}` for AP-synchronized encoders. Position rendering does not accept LED colour fields. For a single input, echo port 0 is inferred. Echo suppression matches expected values for up to 500 ms; identical physical reports may be dropped, and it is not an acknowledgment. |
 | Hooks | `startup`, `periodic`, `shutdown` arrays of `{"output":0,"bytes":[176,37,0]}`. Use only documented three-byte channel messages or bounded SysEx. Periodic messages require `period_ms` 20–60000. |
 
-Declarative `protocol_config` must be absent/null. There are no dynamic scripts or user-code plugins. Raw SlipLoop/Dotted/Triplet routes requiring bridge-owned timing are rejected in declarative mappings; unsupported HID, NRPN and jog/scratch protocols need a reviewed capability rather than guessed messages.
+FLX4-specific settings are not accepted in a declarative adapter. There are no dynamic scripts or user-code plugins. Raw SlipLoop/Dotted/Triplet routes requiring bridge-owned timing are rejected in declarative mappings; unsupported HID, NRPN and jog/scratch protocols need a reviewed capability rather than guessed messages.
 
 ## FLX4 pads
 
-`profiles/flx4.json` uses `protocol:"flx4"` and `protocol_config` with `buttons`, `analog`, `browser_encoder`, `leds`, `pad_wiring`, and `pads`. Its **hardware channels are zero-based MIDI nibbles** (unlike declarative 1–16). Its ordinary AP routes, controls and eight pad banks are editable; keep the hardware wiring consistent with the DDJ-FLX4.
+`profiles/flx4.json` uses `adapter:{"type":"flx4",...}` with required `buttons`, `analog`, `browser_encoder`, `leds`, `pad_wiring`, and `pads`. FLX4 requires exactly one input and one output; declarative settings are not accepted. Its **hardware channels are zero-based MIDI nibbles** (unlike declarative 1–16). Its ordinary AP routes, controls and eight pad banks are editable. `pad_wiring` contains `bank_notes` (eight MIDI note numbers in bank order); the physical pad channels are fixed by the adapter, not configurable.
 
-The only supported profile format is version 2. `pads` is a required inline object containing `banks`, with no separate version field or filename reference. There are eight banks of eight actions/nulls; an action has `address`, integer `press`, optional integer `release`; optional `shifted_pads` and `for_player` (track/arrangement/clip/sampler) replace layouts. Every SlipLoop action must explicitly specify `slip_timing` as `straight`, `dotted`, `triplet` or `selected`, together with `press:1` and `release:0`. Missing timing is rejected, not filled in. The bundled slip loops use `selected` to follow the deck's D/T selection.
+Each FLX4 button has `channel`, `note`, optional `side` and a nested `behavior`, for example:
+
+```json
+{"channel":0,"note":12,"behavior":{"type":"action","action":{"address":"/AutoPilot/Deck/{deck}/Cue","press":1,"release":0}}}
+```
+
+Behavior types are `action` (an `action` object), `toggle`/`browse` (an `address`), `bank` (`bank:0..7`), `shift` and `select_deck` (no extra fields). `side` is required for channel-6 deck-targeting controls. These fields are not flattened into the button's MIDI identity.
+
+`pads` is a required inline object containing `banks`, with no separate version field or filename reference. There are eight banks of eight actions/nulls; an action has `address`, integer `press`, optional integer `release`; optional `shifted_pads` and `for_player` (track/arrangement/clip/sampler) replace layouts. Every SlipLoop action must explicitly specify `slip_timing` as `straight`, `dotted`, `triplet` or `selected`, together with `press:1` and `release:0`. Missing timing is rejected, not filled in. The bundled slip loops use `selected` to follow the deck's D/T selection.
 
 Both devices share one AP OSC client (default input `127.0.0.1:9090`, feedback `127.0.0.1:9096`), but have separate physical holds, pickup and device-specific MIDI output. Optional `settings.json` accepts only `osc`/`feedback` socket addresses. Release builds read it beside the executable; debug builds using repository profiles read it from that repository directory. Bindings must have matching AP feedback subscriptions for pickup, switch toggles and hardware position. The compact LC3 profile uses the DAW USB input/output (not Main MIDI or XL 3), DAW Mixer/Control reports, encoder positions and LED colors without Components remapping; see the [controls overview](README.md#supported-mappings).
 

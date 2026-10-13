@@ -19,7 +19,7 @@ try {
     $windows = $Target -match 'windows'
     $binary = if ($windows) { 'ap-midi-osc-bridge.exe' } else { 'ap-midi-osc-bridge' }
     Copy-Item (Join-Path $metadata.target_directory "$Target/release/$binary") $stage
-    Copy-Item README.md, USER-GUIDE.md, DEVELOPMENT.md, CONTROLLER-PORTING.md, STATUS.md, PROFILES.md, MAPPING.md, CONTROL-GUIDE.html, CONTROL-GUIDE.pdf, LAUNCH-CONTROL-3-GUIDE.html, LAUNCH-CONTROL-3-GUIDE.pdf, LICENSE $stage
+    Copy-Item README.md, DEVELOPMENT.md, PROFILES.md, MAPPING.md, CONTROL-GUIDE.html, CONTROL-GUIDE.pdf, LAUNCH-CONTROL-3-GUIDE.html, LAUNCH-CONTROL-3-GUIDE.pdf, LICENSE $stage
     Copy-Item -LiteralPath (Join-Path $project 'profiles') -Destination $stage -Recurse
     $notices = @('# Dependency notices', '', 'Generated from Cargo.lock and dependency source packages.', '')
     $resolved = @{}

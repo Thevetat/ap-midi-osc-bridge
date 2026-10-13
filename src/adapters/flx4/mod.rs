@@ -4,12 +4,10 @@ mod config;
 mod pads;
 
 use super::Adapter;
-use crate::{
-    ap::{FeedbackKind, Player, SharedAp, SlipTiming},
-    profile::DeviceProfile,
-};
+use crate::ap::{FeedbackKind, Player, SharedAp, SlipTiming};
 use anyhow::{anyhow, bail, Context, Result};
-use config::{Config, LedKind, SideBehavior};
+pub use config::Config;
+use config::{LedKind, SideBehavior};
 use midir::MidiOutputConnection;
 use pads::Action;
 use rosc::OscType;
@@ -19,13 +17,10 @@ use std::{
 };
 
 type Key = (usize, u8, u8); // input port, wire channel, canonical physical note
+const PAD_CHANNELS: [u8; 4] = [7, 8, 9, 10];
 const KEEPALIVE: [u8; 12] = [
     0xf0, 0x00, 0x40, 0x05, 0x00, 0x00, 0x04, 0x05, 0x00, 0x50, 0x02, 0xf7,
 ];
-
-pub(super) fn validate(profile: &DeviceProfile) -> Result<()> {
-    config::load(profile).map(|_| ())
-}
 
 fn resolved(route: &str, deck: usize) -> String {
     route.replace("{deck}", &(deck + 1).to_string())
@@ -75,19 +70,15 @@ pub struct Flx4 {
 impl Flx4 {
     pub fn new(
         name: String,
-        profile: DeviceProfile,
+        cfg: Config,
         outputs: Vec<MidiOutputConnection>,
         ap: SharedAp,
     ) -> Result<Self> {
-        profile.validate()?;
-        if outputs.len() != 1 {
-            bail!("FLX4 requires exactly one MIDI output connection");
-        }
-        let cfg = config::load(&profile)?;
         for a in &cfg.analog {
             for route in std::iter::once(&a.address).chain(a.shifted_address.iter()) {
                 for deck in 0..4 {
                     ap.borrow_mut().register(
+                        &name,
                         &resolved(route, deck),
                         if a.bipolar {
                             FeedbackKind::Bipolar
@@ -101,14 +92,18 @@ impl Flx4 {
         for b in &cfg.buttons {
             if let SideBehavior::Toggle { address } = &b.behavior {
                 for deck in 0..4 {
-                    ap.borrow_mut()
-                        .register(&resolved(address, deck), FeedbackKind::Switch)?;
+                    ap.borrow_mut().register(
+                        &name,
+                        &resolved(address, deck),
+                        FeedbackKind::Switch,
+                    )?;
                 }
             }
         }
         for led in &cfg.leds {
             for deck in 0..4 {
                 ap.borrow_mut().register(
+                    &name,
                     &resolved(&led.address, deck),
                     match led.kind {
                         LedKind::Switch => FeedbackKind::Switch,
@@ -119,6 +114,7 @@ impl Flx4 {
         }
         for deck in 0..4 {
             ap.borrow_mut().register(
+                &name,
                 &format!("/AutoPilot/Deck/{}/PlayerType", deck + 1),
                 FeedbackKind::Text,
             )?;
@@ -297,8 +293,8 @@ impl Flx4 {
                 self.banks[deck] = bank;
                 self.mode_feedback(side)?;
             }
-            SideBehavior::Shift => self.shift(side, true)?,
-            SideBehavior::SelectDeck => self.select_deck(side)?,
+            SideBehavior::Shift {} => self.shift(side, true)?,
+            SideBehavior::SelectDeck {} => self.select_deck(side)?,
             SideBehavior::Browse { address } => {
                 let address = resolved(&address, deck);
                 self.send(&address, OscType::Int(1))?;
@@ -417,14 +413,11 @@ impl Flx4 {
     }
     fn refresh_leds(&mut self, side: usize) -> Result<()> {
         let deck = self.selected[side];
-        let leds: Vec<_> = self
-            .cfg
-            .leds
-            .iter()
-            .filter(|led| led.channel as usize == side)
-            .cloned()
-            .collect();
-        for led in leds {
+        for index in 0..self.cfg.leds.len() {
+            let led = &self.cfg.leds[index];
+            if led.channel as usize != side {
+                continue;
+            }
             let address = resolved(&led.address, deck);
             let value = self.ap.borrow().value(&address);
             let (status, code) = match led.kind {
@@ -452,7 +445,7 @@ impl Adapter for Flx4 {
             self.mode_feedback(side)?;
             self.refresh_leds(side)?;
         }
-        self.send("/AutoPilot/Feedback/Resend", OscType::Int(1))
+        Ok(())
     }
     fn input(&mut self, port: usize, bytes: &[u8]) -> Result<()> {
         if port != 0 || bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127 {
@@ -480,13 +473,7 @@ impl Adapter for Flx4 {
         }
         if channel <= 1 || channel == 6 {
             self.button(key, channel, number)?;
-        } else if let Some(index) = self
-            .cfg
-            .pad_wiring
-            .channels
-            .iter()
-            .position(|ch| *ch == channel)
-        {
+        } else if let Some(index) = PAD_CHANNELS.iter().position(|ch| *ch == channel) {
             if number & 15 >= 8 {
                 return Ok(());
             }
@@ -512,14 +499,14 @@ impl Adapter for Flx4 {
         }
         Ok(())
     }
-    fn feedback(&mut self, address: &str) -> Result<()> {
-        let key = address.to_ascii_lowercase();
+    fn feedback(&mut self, addresses: &[&str]) -> Result<()> {
         for deck in 0..4 {
-            if key == format!("/autopilot/deck/{}/playertype", deck + 1) {
+            let address = format!("/autopilot/deck/{}/playertype", deck + 1);
+            if addresses.contains(&address.as_str()) {
                 let player = self
                     .ap
                     .borrow()
-                    .text(address)
+                    .text(&address)
                     .map(|s| Player::parse(&s.to_ascii_lowercase()))
                     .unwrap_or(Player::Unknown);
                 if self.players[deck] != player {
@@ -538,9 +525,9 @@ impl Adapter for Flx4 {
             // with the latest position is NOT evidence of another writer.
             // Known bridge takeovers and invalid feedback still re-arm pickup.
             self.captured.retain(|((port, channel, base), route)| {
-                route != &key
-                    || (ap.value(address).is_some()
-                        && ap.control_owned(&format!("{name}:{port}:cc:{channel}:{base}"), address))
+                !addresses.contains(&route.as_str())
+                    || (ap.value(route).is_some()
+                        && ap.control_owned(&format!("{name}:{port}:cc:{channel}:{base}"), route))
             });
         }
         for side in 0..2 {
