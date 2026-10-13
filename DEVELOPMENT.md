@@ -19,7 +19,7 @@ cargo build --release --locked --target x86_64-pc-windows-msvc
 powershell -NoProfile -File scripts/package.ps1 -Target x86_64-pc-windows-msvc
 ```
 
-Use `pwsh` and the corresponding target on other platforms. The manual **Build AP MIDI OSC Bridge** workflow targets Windows x64, macOS ARM64/Intel and Linux x64; it uploads artifacts, not GitHub Releases. `scripts/package.ps1` stages the binary, profiles, four reference documents, both HTML/PDF guides, MIT license and dependency notices, then writes an archive and SHA-256 checksum into `dist/`. It replaces published files only after archive creation succeeds.
+Use `pwsh` and the corresponding target on other platforms. The manual **Build AP MIDI OSC Bridge** workflow targets Windows x64, macOS ARM64/Intel and Linux x64; it uploads artifacts, not GitHub Releases. `scripts/package.ps1` stages the binary, profiles, reference documents including the controller-porting guide, both HTML/PDF guides, MIT license and dependency notices, then writes an archive and SHA-256 checksum into `dist/`. It replaces published files only after archive creation succeeds.
 
 Windows uses the static MSVC runtime; Linux needs compatible system ALSA/libc. Binaries are unsigned/unnotarized. A checksum detects corruption, **not** publisher identity. Historical `dist/` files are not evidence of the current source's build or hardware compatibility.
 
@@ -67,15 +67,7 @@ See [MAPPING.md](MAPPING.md) for exact assignments, subscriptions and unsupporte
 
 ## Adding another controller
 
-1. **Establish the exact device.** Record model/revision, firmware, OS, USB/DIN MIDI versus HID, hardware mode, desired layout and AP version. Similar product names do not establish protocol compatibility. Do not inspect private AP mappings, change persistent modes, install drivers/firmware or probe hardware without authorization.
-2. **Gather protocol evidence.** Read the exact model's official implementation/programmer's reference. A maintained implementation can corroborate hardware details, not AP mappings. Record URL plus page/section or repository revision/function, and distinguish documented, observed, inferred and unknown facts. Check PDF tables directly if extraction loses columns; respect licenses.
-3. **Inventory both directions.** For each control/mode, record input port/channel/number/value and press/release semantics, output bytes/effects, and source/confidence. Check channel numbering (1–16 versus wire 0–15), decimal/hex, Note Off/zero-velocity Note On, shifted/short/long reports, CC resolution/MSB order, relative encoding, output echoes, mode confirmation and keepalive. Unknown output means omit that feedback—not borrow another controller's SysEx.
-4. **Use the smallest implementation.** Documented Note/CC controls belong in a declarative profile with unique named selectors. Start input-only if output is unestablished. Use modes/layers/hooks only where justified; leave unknown gestures unassigned. Unsupported transports/decoders need a reviewed Rust adapter, not invented JSON fields or a speculative plugin system. Do not send FLX4 keepalive or LC3 DAW messages to unrelated hardware.
-5. **Establish AP semantics separately.** Record `gesture → MIDI event → selected target → AP input route/value → required feedback`. Verify argument scale and trigger/toggle/momentary behavior. Account for track/arrangement/clip/sampler differences. An undocumented route stays unassigned; do not pretend waveform seek provides scratching or unrelated feedback proves cue occupancy.
-6. **Preserve the contracts above.** Physical inputs must not collide across devices; release destinations survive selection changes. Keep last-held-repeat priority, real-feedback pickup, echo suppression and independent cleanup. Modes and layers remain distinct. Generic features unused by bundled profiles are not automatically obsolete.
-7. **Deliver with evidence.** Update profiles, mappings, schema reference and printable guides together. Distinguish source inspection, compilation and observed hardware/AP behavior. Do not publish releases or modify installations as a side effect. If blocked, record sources, attempted paths, the unresolved fact and the smallest input needed.
-
-`--list` does not open devices. Use `--monitor INPUT` only for authorized capture; it does not initialize hardware, so silence is inconclusive. Never run the normal bridge to discover an unsupported device's protocol.
+Use the standalone [controller-porting guide](CONTROLLER-PORTING.md) for the evidence-gathering workflow, protocol inventory, declarative-versus-adapter decision, implementation locations, safety invariants and permission-scoped capture instructions. Keep it as the authoritative adaptation walkthrough rather than duplicating or compressing it into this architecture reference.
 
 ## Evidence and limits
 

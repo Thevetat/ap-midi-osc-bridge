@@ -13,7 +13,7 @@ A native MIDI → OSC bridge for [AUTO/PILOT](https://autopilot.audio/). Put con
 
 1. Connect your controller. In AUTO/PILOT, **disable that controller's direct MIDI input** to prevent duplicate actions. Enable OSC input on **9090**, OSC feedback to **127.0.0.1:9096** at 30 Hz, and **Toggle All** feedback subscriptions (including TempoSlider). Set **Settings → General → Browser Mode → CONTROL MODE** for hardware browsing.
 2. Extract the app and `profiles/` together. On Windows, double-click **`ap-midi-osc-bridge.exe`**; on macOS/Linux, run `./ap-midi-osc-bridge` from its directory. Keep the console open while playing; **Ctrl+C** requests best-effort release of held controls. Do not run from inside the ZIP.
-3. For another controller, add an editable JSON profile to `profiles/`. For different MIDI port names, edit that profile's `inputs`/`outputs`; `--list` shows available ports. See [PROFILES.md](PROFILES.md).
+3. For another controller, start with the [controller-porting guide](CONTROLLER-PORTING.md): it explains protocol research, profiles and when a Rust adapter is needed. For different MIDI port names, edit the profile's `inputs`/`outputs`; `--list` shows available ports. See [PROFILES.md](PROFILES.md) for the JSON format.
 
 A Windows installation can keep the executable and profiles in `%LOCALAPPDATA%\ap-midi-osc-bridge\` with a shortcut directly to the executable; there are no command launchers. The app can attach/detach matching devices while running. Ambiguous selectors and competing profiles claiming the same port are reported rather than guessed.
 
@@ -52,4 +52,4 @@ The executable is `target/release/ap-midi-osc-bridge` (`.exe` on Windows). **Cop
 - FLX4 jog/scratch, repeat scrubbing, crossfader and FX are not mapped. Clip/sampler coverage differs from track/arrangement; see [MAPPING.md](MAPPING.md).
 - A supplied profile or successful compile is not hardware verification. Current FLX4+LC3 joint operation and AP end-to-end behavior have not been established by observation. OSC is unauthenticated UDP; network loss/crashes cannot guarantee release delivery.
 
-[Editable profile format](PROFILES.md) · [Adding another controller](DEVELOPMENT.md#adding-another-controller) · [MIT license](LICENSE). Independent project, not affiliated with AlphaTheta/Pioneer DJ, Novation or AUTO/PILOT.
+[Editable profile format](PROFILES.md) · [Adding another controller](CONTROLLER-PORTING.md) · [MIT license](LICENSE). Independent project, not affiliated with AlphaTheta/Pioneer DJ, Novation or AUTO/PILOT.
