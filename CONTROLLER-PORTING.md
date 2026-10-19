@@ -4,7 +4,7 @@ For developers and AI agents adding a controller other than the supplied DDJ-FLX
 
 **This is an adaptation guide, not a list of supported devices.** Use an editable declarative profile when the existing decoder supports the protocol; add a small Rust adapter when it does not. Never send FLX4 keepalive, LC3 DAW initialization or another model's LED/SysEx messages to an unrelated device.
 
-Read the [AP contract](DEVELOPMENT.md#ap-wire-contract-and-safety), [profile schema](PROFILES.md) and [current mappings](MAPPING.md). Keep the shared AP safety model while adapting device-specific decoding/output. Preserve both existing controllers and their independent sessions unless the user explicitly requests otherwise.
+Read the [Syndicate wire contract](DEVELOPMENT.md#ap-wire-contract-and-safety), [profile schema](PROFILES.md) and [current mappings](MAPPING.md). Keep the shared wire/safety model while adapting device-specific decoding/output. Preserve both existing controllers and their independent sessions unless the user explicitly requests otherwise.
 
 ## 1. Establish the target and scope
 
@@ -13,7 +13,7 @@ Use information already supplied; ask only for missing details that affect imple
 - Exact manufacturer/model, hardware revision, relevant firmware version and operating system. Similar appearance or model names do not establish compatibility; compact LC3 and LCXL3 are distinct devices.
 - Operating mode and connection: USB MIDI, DIN MIDI through an interface, HID or proprietary transport. Identify the correct physical/virtual input and output ports.
 - Desired controls and deck layout: two strips switching among four decks, four dedicated strips, a pad-only device, etc. Do not assign fixed track/clip/sampler roles to deck numbers.
-- AP version/API availability and any custom mappings to preserve. Read private mapping files only with permission; do not publish settings or treat saved feedback subscriptions as proof of writable APIs.
+- Syndicate version/API availability and any custom mappings to preserve. Read private mapping files only with permission; do not publish settings or treat saved feedback subscriptions as proof of writable APIs.
 - Which controls need feedback, mode switching, display output, pickup or held actions. Unknown features may remain unassigned rather than delaying a useful minimal mapping.
 
 Research and code inspection come first. Hardware capture, live operation, tests and publication require explicit authorization for that work. Do not change AP settings, install drivers, switch persistent device modes or write firmware as a side effect.
@@ -50,7 +50,7 @@ Use these as worked examples of boundaries, not as universal controller behavior
 | FLX4 MIDI implementation and native SYNC timing | `src/adapters/flx4/mod.rs`: `input`, `cc`, `physical_key`; `profiles/flx4.json`: button behaviors. Native short/long reports are not replaced by a bridge hold timer. |
 | FLX4 output protocol, corroborated by the Mixxx implementation | Same module: `KEEPALIVE`, `tick`, `mode_feedback`, `refresh_leds`, `cleanup`. Inspect startup and exit output as well as periodic messages. |
 | AP player-specific semantics | `src/ap.rs`: `Player::route`; FLX4 `route()` and player feedback. Tempo scaling is separate from normalized mixer/pickup state. |
-| Compact LC3 DAW reports, position feedback and displays | `profiles/launch-control-3.json`: `adapter.modes`, `layers`, `deck_feedback`, `bindings`, `feedback`; declarative `changed_mode`, `emit`, `refresh`. |
+| Compact LC3 DAW reports, position feedback and displays | `profiles/launch-control-3.json`: `adapter.modes`, `layers`, `deck_feedback`, `bindings`, `feedback`; declarative `changed_mode`, `emit`, `refresh`. The FX layer uses layer arrays and `absolute_dry_home` without macro feedback; see [schema](PROFILES.md#declarative-json-version-2). |
 | Deck/bank/layer choices | [Controller mappings](MAPPING.md): FLX4 Shift+LOAD deck switching; LC3 independent cue target and button layer. These are bridge design choices, not universal MIDI gestures. |
 
 The [protocol references](PROFILES.md#protocol-references) retain the official FLX4 MIDI list, Mixxx callbacks, Novation DAW guide, compact-LC3 Bitwig references and AP OSC guide, with relevant sections/functions. This provenance is **not hardware validation**; see [evidence limits](DEVELOPMENT.md#evidence-and-limits).
@@ -73,7 +73,7 @@ For wire scales and unresolved AP routes, use the [AP contract](DEVELOPMENT.md#a
 
 Add `profiles/<device>.json`, using the [current schema](PROFILES.md#declarative-json-version-2). Root fields describe identity/ports; adapter settings live under `adapter:{"type":"declarative",...}`. Use stable unique selectors; `#index` is only for monitoring. Start with `outputs:[]` if output is unestablished.
 
-The existing adapter supports Note/CC buttons, confirmed toggles, 7/14-bit absolute controls, two's-complement relative controls, recentering encoders, deck selection, hardware-reported modes, independent software layers and documented lifecycle/output hooks. Verify the particular encoding against the device; matching the word “encoder” is insufficient. Feedback settings use a nested `render` object. See the schema rather than copying FLX4's different hardware configuration.
+The existing adapter supports Note/CC buttons (ordinary Int or FX-macro `macro_button` Float 0..1 on latched press), confirmed toggles, 7/14-bit absolute controls, FX-macro-only 7-bit dry-home controls, two's-complement relative controls, recentering encoders, deck selection, hardware-reported modes, software layers (including bindings shared by a layer-name array) and documented lifecycle/output hooks. Verify the particular encoding against the device; matching the word “encoder” is insufficient. Feedback settings use a nested `render` object. See the schema rather than copying FLX4's different hardware configuration.
 
 Profiles parse and validate at startup, before MIDI attachment; reconnect reuses typed configuration. Restart after edits. Do not add a controller-specific launcher or application for a device the declarative adapter already covers.
 
@@ -97,7 +97,7 @@ Keep the implementation isolated so FLX4 and LC3 continue to coexist. No specula
 1. **Physical identity survives modifiers.** A press held across Shift/mode/layer/deck changes must release its original resolved action. Do not merge distinct controls; include device/session and input-port identity. Do not clear held owners merely because a layer changes.
 2. **Decode before scaling.** Use the hardware's actual range, ordering, inversion, centre and pickup tolerance. FLX4's reusable MSB and a declarative control's fresh-MSB requirement are distinct; relative controls are not absolute positions.
 3. **Normalize once.** Absolute position/pickup is internally 0–1. AP TempoSlider is −1..+1 in both directions; mixer values remain 0–1. FLX4 centre codes 8191/8192 are not universal.
-4. **Pickup needs real feedback and movement.** Initial reports establish baselines, not permission to jump. Re-arm relevant controls on target/layer changes; never reuse stale pairing/history for a new destination. Missing targets stay blocked. Ordinary delayed AP feedback does not revoke capture, and AP feedback does not identify mouse-only writers.
+4. **Pickup needs real feedback and movement.** Initial reports establish baselines, not permission to jump. Re-arm on relevant target/layer changes; never reuse stale pairing/history for a new destination. Missing targets stay blocked. Ordinary delayed Syndicate feedback does not revoke capture or identify mouse-only writers. **FX dry-home is different:** no documented macro feedback exists, so a physical exact 0/dry gesture is required after baseline; do not describe this as confirmed pickup.
 5. **State belongs to its destination.** Preserve independent deck selection, per-deck banks/timing, confirmed toggles, last-held-repeat priority and shared release ownership. Do not reset another device's state during cleanup. Hardware mode and software layer are different state dimensions.
 6. **Output is not confirmation.** Sending a selection hook does not confirm a hardware mode; sending OSC does not confirm AP acted. Position-sync and echo suppression are device-protocol decisions, not general permission to treat host output as human movement.
 7. **Failure stays bounded.** Retain queue-overflow handling, OSC processing limits, feedback-source filtering, ambiguous-port rejection, independent detach/retry and best-effort releases. Do not promise recovery from force-kills, packet loss or AP restarts.
@@ -123,8 +123,8 @@ Without testing permission, use source inspection and compilation only. `cargo b
 
 - Provide the profile/adapter, protocol notes, intended controls and explicit unsupported operations or unresolved questions.
 - Preserve existing FLX4/LC3 assignments and concurrent ownership. Keep one executable with automatic profiles; do not silently substitute a new controller's protocol for an existing one.
-- Update profile documentation, mappings, setup instructions and printable controls to match the actual device. Keep AP settings changes as user instructions unless separately authorized.
-- Record **source-reviewed**, **compiled**, **hardware-observed** and **AP end-to-end observed** separately, with revision/target/device/mode/AP version as applicable. Do not present proposed checks as completed or inherit another device's validation claims.
+- Update profile documentation, mappings, setup instructions and printable controls to match the actual device. Keep Syndicate settings changes as user instructions unless separately authorized.
+- Record **source-reviewed**, **compiled**, **hardware-observed** and **Syndicate end-to-end observed** separately, with revision/target/device/mode/Syndicate version as applicable. Do not present proposed checks as completed or inherit another device's validation claims.
 - Include documentation in packages and update links and dependency notices. No publication, firmware changes or machine-specific deployment as incidental work.
 
 The deliverable is a small, explained mapping with explicit gaps—not a claim that every control works because the binary compiled.

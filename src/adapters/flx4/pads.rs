@@ -29,17 +29,34 @@ impl Action {
     /// Slip-loop actions must state their timing explicitly.
     pub fn validate(&self) -> Result<()> {
         if !crate::profile::valid_address(&self.address) {
-            bail!("Invalid OSC address {:?}; only {{deck}} substitution and literal /AutoPilot routes are supported", self.address);
+            bail!("Invalid OSC address {:?}; only {{deck}} substitution and literal /Syndicate routes are supported", self.address);
         }
         let expanded = self.address.replace("{deck}", "1");
+        if let Some(deck) = expanded.strip_suffix("/SetCueLoop") {
+            if !matches!(
+                deck,
+                "/Syndicate/Deck/1"
+                    | "/Syndicate/Deck/2"
+                    | "/Syndicate/Deck/3"
+                    | "/Syndicate/Deck/4"
+            ) || !(1..=8).contains(&self.press)
+                || self.release.is_some()
+                || self.toggle
+                || self.slip_timing.is_some()
+            {
+                bail!(
+                    "SetCueLoop requires a deck route, cue 1..8 and no release/toggle/slip_timing"
+                );
+            }
+        }
         if self.toggle {
             let valid = expanded.rsplit_once('/').is_some_and(|(deck, route)| {
                 matches!(
                     deck,
-                    "/AutoPilot/Deck/1"
-                        | "/AutoPilot/Deck/2"
-                        | "/AutoPilot/Deck/3"
-                        | "/AutoPilot/Deck/4"
+                    "/Syndicate/Deck/1"
+                        | "/Syndicate/Deck/2"
+                        | "/Syndicate/Deck/3"
+                        | "/Syndicate/Deck/4"
                 ) && matches!(route, "SlipDotted" | "SlipTriplet")
             });
             if !valid || self.press != 1 || self.release.is_some() || self.slip_timing.is_some() {
@@ -49,10 +66,10 @@ impl Action {
         if let Some((deck, length)) = expanded.split_once("/SlipLoop/") {
             if !matches!(
                 deck,
-                "/AutoPilot/Deck/1"
-                    | "/AutoPilot/Deck/2"
-                    | "/AutoPilot/Deck/3"
-                    | "/AutoPilot/Deck/4"
+                "/Syndicate/Deck/1"
+                    | "/Syndicate/Deck/2"
+                    | "/Syndicate/Deck/3"
+                    | "/Syndicate/Deck/4"
             ) || !matches!(
                 length,
                 "ThirtySecond"

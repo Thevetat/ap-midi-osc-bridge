@@ -51,7 +51,7 @@ footer { margin-top: auto; padding-top: 2mm; border-top: 1px solid #b5c6ce; disp
 .sheet { display: flex; flex-direction: column; }
 @media print {
  body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
- .sheet { width: auto; min-height: 189mm; margin: 0; padding: 0; }
+ .sheet { width: auto; min-height: 180mm; margin: 0; padding: 0; }
  .sheet + .sheet { break-before: page; }
 }
 @media screen and (max-width: 900px) {
@@ -70,10 +70,10 @@ footer { margin-top: auto; padding-top: 2mm; border-top: 1px solid #b5c6ce; disp
 <body>
 <section class="sheet">
 <div class="page-body">
-<header><div><small>COMPACT NOVATION LAUNCH CONTROL 3 → AUTO/PILOT · AP MIDI OSC BRIDGE</small><h1>Launch Control <span>3</span></h1></div><div class="meta"><b>PERFORMANCE MAP · WORKING SOURCE</b><br>16 endless encoders · 8 buttons · no faders<br>Compact LC3 — not Launch Control XL 3</div></header>
-<div class="rule"><b>FEEDBACK REQUIRED.</b> AP OSC input: <b>9090</b> · feedback: <b>127.0.0.1:9096</b> · <b>Toggle All</b> checked. Missing feedback blocks EQ/filter pickup and Mute/Cue toggles.</div>
+<header><div><small>COMPACT NOVATION LAUNCH CONTROL 3 → Syndicate · AP MIDI OSC BRIDGE</small><h1>Launch Control <span>3</span></h1></div><div class="meta"><b>PERFORMANCE MAP · WORKING SOURCE</b><br>16 endless encoders · 8 buttons · no faders<br>Compact LC3 — not Launch Control XL 3</div></header>
+<div class="rule"><b>EQ/FILTER + MIXER FEEDBACK REQUIRED.</b> Syndicate OSC input: <b>9090</b> · feedback: <b>127.0.0.1:9096</b> · <b>Toggle All</b>. Missing feedback blocks EQ/filter pickup and Mute/Cue toggles; FX instead uses dry-home with no macro feedback.</div>
 <div class="controls">
-<div class="control"><b>FUNCTION · BUTTON LAYER</b><br>Toggle Hot Cues ↔ Mixer<br>Startup: Hot Cues / Deck 1</div>
+<div class="control"><b>FUNCTION · LAYER</b><br>Hot Cues → Mixer → FX → repeat<br>Startup: Hot Cues / Deck 1</div>
 <div class="control"><b>TRACK ◀ / ▶ · DECK 1–4</b><br>Select hot-cue target · no wrap<br>Screen shows deck and button layer</div>
 <div class="control"><b>BROWSER · TOP RIGHT</b><br>Clockwise: Down · anticlockwise: Up<br>Same encoder in both modes</div>
 <div class="control"><b>EQ / FILTER ENCODERS</b><br>Mode + Function (DAW)<br>Always fixed mixer CH1–4</div>
@@ -102,7 +102,7 @@ footer { margin-top: auto; padding-top: 2mm; border-top: 1px solid #b5c6ce; disp
 <div class="encoder idle"><span class="position">8</span><b>—</b><small>unassigned</small></div>
 </div></article>
 <article class="bank alt">
-<div class="bank-title"><h3>MODE 2 · DAW CONTROL → FILTERS</h3><small>Console mode: filter · filter input routes unconfirmed</small></div>
+<div class="bank-title"><h3>MODE 2 · DAW CONTROL → FILTERS</h3><small>Console mode: filter · inputs documented in Syndicate §14.9</small></div>
 <div class="surface">
 <div class="row-label">TOP</div>
 <div class="encoder"><span class="position">1</span><b>FILTER 1</b><small>CH1</small></div>
@@ -123,38 +123,80 @@ footer { margin-top: auto; padding-top: 2mm; border-top: 1px solid #b5c6ce; disp
 <div class="encoder idle"><span class="position">7</span><b>—</b><small>unassigned</small></div>
 <div class="encoder idle"><span class="position">8</span><b>—</b><small>unassigned</small></div>
 </div></article>
-<p><b>DEFAULT · HOT CUES</b> — bottom buttons 1–8 launch the selected deck’s cue slots. Function toggles to/from the Mixer layer below.</p>
+</div>
+<footer><span>Default mapping: profiles/launch-control-3.json · No transport, load or fader assignments</span><span>EQ / filter surface · Hardware unverified · 1 / 4</span></footer>
+</section>
+<section class="sheet">
+<div class="page-body">
+<header><div><small>COMPACT LC3 · SOFTWARE BUTTON LAYERS</small><h1>Cues &amp; <span>mixer</span></h1></div><div class="meta">Function: Hot Cues → Mixer → FX<br>EQ/filter encoders unchanged across first two layers</div></header>
+<p><b>HOT CUES LAYER</b> — bottom buttons 1–8 tap selected-deck cue slots. Function cycles Hot Cues → Mixer → FX → Hot Cues; EQ/filter encoders work in Hot Cues and Mixer, FX overrides them.</p>
 <div class="buttons">
 <div class="button" style="border-top-color:#FF5D73"><b>HOT CUE 1</b></div><div class="button" style="border-top-color:#FF9F43"><b>HOT CUE 2</b></div>
 <div class="button" style="border-top-color:#FFE66D"><b>HOT CUE 3</b></div><div class="button" style="border-top-color:#72EFB5"><b>HOT CUE 4</b></div>
 <div class="button" style="border-top-color:#48CAE4"><b>HOT CUE 5</b></div><div class="button" style="border-top-color:#5E8CFF"><b>HOT CUE 6</b></div>
 <div class="button" style="border-top-color:#A875FF"><b>HOT CUE 7</b></div><div class="button" style="border-top-color:#FF66C4"><b>HOT CUE 8</b></div>
 </div>
-<p><b>FUNCTION → MIXER LAYER</b> — existing mute/headphone-cue controls, unchanged by Track selection.</p>
+<p><b>MIXER LAYER</b> — Mute/headphone Cue buttons for fixed CH1–4, unchanged by Track selection.</p>
 <div class="buttons">
 <div class="button"><small>1</small><b>MUTE CH1</b></div><div class="button"><small>2</small><b>MUTE CH2</b></div><div class="button"><small>3</small><b>MUTE CH3</b></div><div class="button"><small>4</small><b>MUTE CH4</b></div>
 <div class="button cue"><small>5</small><b>CUE CH1</b></div><div class="button cue"><small>6</small><b>CUE CH2</b></div><div class="button cue"><small>7</small><b>CUE CH3</b></div><div class="button cue"><small>8</small><b>CUE CH4</b></div>
 </div>
-<div class="legend"><div><b>Hot-cue colours:</b> fixed Candy Pop RGB palette, NOT populated-cue indicators. Empty slots can set cues. Function: purple = Hot Cues; cyan = Mixer.</div><div><b>Mixer LEDs:</b> red = mute; cyan = headphone cue. Bright/dim follows AP on/off feedback; grey = unknown. Knobs are unchanged by the button layer.</div></div>
+<div class="legend"><div><b>Hot-cue colours:</b> fixed Candy Pop RGB palette, NOT populated-cue indicators. Empty slots can set cues. Use the screen for layer identity: Function is purple in Hot Cues and FX, cyan in Mixer. FX action colours: page 3.</div><div><b>Mixer LEDs:</b> red = mute; cyan = headphone cue. Bright/dim follows Syndicate on/off feedback; grey = unknown. EQ/filter knobs are unchanged between Hot Cues and Mixer; FX overrides them.</div></div>
+<div class="two" style="margin-top:3mm">
+<div><h2>Modes &amp; encoder pickup</h2>
+<p>Hold <b>Mode</b>, press <b>Function (DAW)</b> to switch DAW Mixer ↔ DAW Control, then exit mode selection. Other device modes are not mapped. A confirmed mode change re-arms controls. Syndicate feedback synchronizes EQ/filter encoders in Hot Cues/Mixer; <b>no position feedback → no EQ/filter output</b>. FX overrides them in either reported mode and uses dry-home (page 3).</p>
+<p><b>Function alone</b> cycles Hot Cues → Mixer → FX. Switching Hot Cues ↔ Mixer preserves unchanged encoder captures; entering/leaving FX re-arms them. Track ◀/▶ selects the Hot Cue target Deck 1–4 independently of FLX4, stopping at either end. EQ/filter, FX and Mixer buttons stay on main CH1–4, never arrangement trims or cue-selected decks.</p></div>
+<div><h2>Browser &amp; buttons</h2>
+<p>Top encoder 8: clockwise Down, anticlockwise Up; recentres over DAW MIDI output. After a mode switch, the first non-echo report may establish a baseline. Echo suppression can drop identical physical reports within 500 ms; it is not an acknowledgment.</p>
+<p>Cue buttons tap once, no held preview or LC3 cue-region loops. Fixed HotCue hold/SetCueLoop are not mapped. Candy Pop colours do not track later palette/cue changes; empty slots can set cues, CueMomentary/Slip remain untouched, arrangement routes act as markers (not clip/sampler cues). Mixer Mute/Cue buttons invert confirmed 0/1; grey/unknown blocks toggles.</p>
+<p>No Browser Enter, Back or Load: use Syndicate or FLX4. <code>/Syndicate/Mixer/CHn/Filter1</code> and <code>Filter2</code> are documented in <a href="https://autopilot.audio/user-guide/index.html?c=c14">Syndicate §14.9</a>; missing feedback blocks pickup. Hardware/end-to-end operation is unverified.</p></div>
 </div>
-<footer><span>Default mapping: profiles/launch-control-3.json · No transport, load or fader assignments</span><span>Hardware / AP behaviour unverified · 1 / 2</span></footer>
+</div>
+<footer><span>Full operation: <a href="MAPPING.md#launch-control-3-compact-daw-usb-ports">MAPPING.md</a> · Syndicate §14.9 filter inputs</span><span>Buttons / feedback · 2 / 4</span></footer>
 </section>
 <section class="sheet">
 <div class="page-body">
-<header><div><small>LAUNCH CONTROL 3 · AP MIDI OSC BRIDGE · EDITABLE CONTROLLER PROFILE</small><h1>Setup &amp; <span>feedback</span></h1></div><div class="meta">One bridge · shared AP connection<br>Use alongside FLX4 or on its own</div></header>
+<header><div><small>LAUNCH CONTROL 3 · THIRD FUNCTION LAYER</small><h1>FX <span>macros</span></h1></div><div class="meta">Fixed mixer CH1–4 · both confirmed DAW modes<br>Static action colours, not FX state</div></header>
+<div class="rule"><b>CONFIGURE SYNDICATE FIRST.</b> On each of CH1–4 enable the VST3 insert chain; assign Macro 1 to plugin wet/dry (0 dry → 1 wet), Macro 2 to a mappable plugin enable (0 off, 1 on). Invert a bypass assignment if necessary. The bridge does not toggle the chain or configure the plugin.</div>
+<p>Press <b>Function</b> through Hot Cues → Mixer → <b>FX</b>. The screen labels FX CH1–4 and button ON/OFF roles. FX works in either confirmed DAW Mixer (EQ) or DAW Control (filter) hardware mode; while active, it overrides the EQ/filter encoders. Track ◀/▶ still selects a Hot Cue deck, but does <b>not</b> retarget fixed FX channels.</p>
+<article class="bank alt"><div class="bank-title"><h3>FX LAYER · ENCODERS</h3><small>Top row · fixed mixer channels · 7-bit Macro 1 wet</small></div><div class="surface">
+<div class="row-label">TOP</div>
+<div class="encoder"><span class="position">1</span><b>WET</b><small>CH1</small></div><div class="encoder"><span class="position">2</span><b>WET</b><small>CH2</small></div><div class="encoder"><span class="position">3</span><b>WET</b><small>CH3</small></div><div class="encoder"><span class="position">4</span><b>WET</b><small>CH4</small></div>
+<div class="encoder idle"><span class="position">5</span><b>—</b></div><div class="encoder idle"><span class="position">6</span><b>—</b></div><div class="encoder idle"><span class="position">7</span><b>—</b></div><div class="encoder browser"><span class="position">8</span><b>BROWSE</b><small>Up / Down</small></div>
+<div class="row-label">BOTTOM</div><div class="encoder idle"><span class="position">1</span><b>—</b></div><div class="encoder idle"><span class="position">2</span><b>—</b></div><div class="encoder idle"><span class="position">3</span><b>—</b></div><div class="encoder idle"><span class="position">4</span><b>—</b></div><div class="encoder idle"><span class="position">5</span><b>—</b></div><div class="encoder idle"><span class="position">6</span><b>—</b></div><div class="encoder idle"><span class="position">7</span><b>—</b></div><div class="encoder idle"><span class="position">8</span><b>—</b></div>
+</div></article>
+<p><b>Dry-home safety:</b> There is no documented macro feedback or position pickup. Each time you enter or return to FX, or change the confirmed hardware mode, the first FX-encoder report establishes a baseline only. Then physically turn that encoder to <b>exact 0/dry</b> to send 0 and arm; if it starts dry, nudge away and back. Subsequent motion sends normalized Macro 1 wet. Another known bridge writer, including the FLX4, re-arms dry-home; mouse/external changes cannot be detected.</p>
+<article class="bank"><div class="bank-title"><h3>FX LAYER · BUTTONS</h3><small>Explicit Macro 2 writes · not toggles</small></div><div class="buttons">
+<div class="button cue" style="border-top-color:#32894d;background:#e6f4e9"><b>ON CH1</b></div><div class="button cue" style="border-top-color:#32894d;background:#e6f4e9"><b>ON CH2</b></div><div class="button cue" style="border-top-color:#32894d;background:#e6f4e9"><b>ON CH3</b></div><div class="button cue" style="border-top-color:#32894d;background:#e6f4e9"><b>ON CH4</b></div>
+<div class="button"><b>OFF CH1</b></div><div class="button"><b>OFF CH2</b></div><div class="button"><b>OFF CH3</b></div><div class="button"><b>OFF CH4</b></div>
+</div></article>
+<p>Buttons 1–4 send Macro 2 = <b>1</b>; 5–8 send Macro 2 = <b>0</b> for CH1–4. Green/red are <b>static action labels</b>, never effect state or confirmation. No macro feedback subscription, fake LED status, or startup/shutdown macro writes. Enable-button writes do not alter Macro 1 wet amount or the entire insert chain.</p>
+<p><b>Other layers:</b> Function to Hot Cues restores EQ/filter encoders in the confirmed hardware mode. Switching Hot Cues ↔ Mixer does not re-arm unchanged encoder bindings; entering/leaving FX does. Browser top encoder 8 works in all layers.</p>
+</div><footer><span>Full FX setup: <a href="MAPPING.md#launch-control-3-compact-daw-usb-ports">MAPPING.md</a> · <a href="https://autopilot.audio/user-guide/index.html?c=c14">Syndicate guide §14.9, Mixer FX/Macro</a></span><span>FX controls · Hardware / Syndicate unverified · 3 / 4</span></footer>
+</section>
+<section class="sheet">
+<div class="page-body">
+<header><div><small>LAUNCH CONTROL 3 · AP MIDI OSC BRIDGE · EDITABLE CONTROLLER PROFILE</small><h1>Setup &amp; <span>feedback</span></h1></div><div class="meta">One bridge · shared Syndicate connection<br>Use alongside FLX4 or on its own</div></header>
 <div class="two">
 <div>
-<section class="topic"><h2>1 · Configure AUTO/PILOT</h2>
+<section class="topic"><h2>1 · Configure Syndicate</h2>
 <table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>
 <tr><td>OSC input / listen</td><td><b>Enabled · 9090</b></td></tr>
 <tr><td>OSC feedback destination</td><td><b>127.0.0.1 · 9096</b></td></tr>
-<tr><td>Feedback update rate</td><td><b>30 Hz</b></td></tr>
 <tr><td>Feedback subscriptions</td><td><b>Toggle All → all checked</b></td></tr>
 <tr><td>Browser Mode</td><td><b>CONTROL MODE</b></td></tr>
-<tr><td>Direct AP MIDI inputs</td><td><b>Disable LC3</b> and any other bridged controller</td></tr>
+<tr><td>Direct Syndicate MIDI inputs</td><td><b>Disable LC3</b> and any other bridged controller</td></tr>
 </tbody></table>
-<p>For LC3-only selective feedback, enable CH1–4 <code>EQ/Low</code>, <code>EQ/Mid</code>, <code>EQ/High</code>, <code>Filter1</code>, <code>Filter2</code>, <code>Mute</code> and <code>Cue</code>. The FLX4 needs additional subscriptions.</p>
+<p>Feedback is change-only since 0.1.902; no rate setting. Blocked takeovers may request a resend after 250 ms, globally at most once/sec; no timeout confirms success. <a href="PROFILES.md#osc-settings">Details</a>.</p>
+<p>For selective LC3 subscriptions: CH1–4 <code>EQ/Low</code>, <code>EQ/Mid</code>, <code>EQ/High</code>, <code>Filter1</code>, <code>Filter2</code>, <code>Mute</code>, <code>Cue</code>. FX macros have no documented feedback; FLX4 needs additional subscriptions.</p>
 </section>
+<section class="topic"><h2>If controls do nothing</h2>
+<p>Check console mode, DAW input/output, feedback subscriptions/destination and Browser CONTROL MODE. The bridge does not configure Syndicate.</p>
+<p>Default profile/wire root: <code>/Syndicate/</code> (0.1.903+). Custom <code>osc_root</code> must match feedback; update old profiles explicitly. <a href="PROFILES.md#osc-settings">Root rules</a>.</p>
+<p>Keep the console open. Ctrl+C attempts standalone mode and held releases, both best-effort, never confirmed. Hotplug is automatic; restart after Syndicate restarts or uncertain state. Force-kills/UDP loss cannot guarantee cleanup.</p>
+</section>
+</div>
+<div>
 <section class="topic"><h2>2 · Use the DAW USB ports</h2>
 <p>Close other apps holding LC3’s DAW ports. On Windows the documented DAW connection is <b>USB MIDI port 2</b>, not Main.</p>
 <table><tbody><tr><th>Input</th><td><code>MIDIIN2 (LC3 1 MIDI)</code></td></tr><tr><th>Output</th><td><code>MIDIOUT2 (LC3 1 MIDI)</code></td></tr></tbody></table>
@@ -167,30 +209,10 @@ footer { margin-top: auto; padding-top: 2mm; border-top: 1px solid #b5c6ce; disp
 <p>Startup requests DAW Mixer (EQ), with the <b>Hot Cues</b> button layer and <b>Deck 1</b>. The controller must report a mapped DAW mode before controls become active. No firmware or stored Custom Modes are overwritten.</p>
 </section>
 </div>
-<div>
-<section class="topic"><h2>Modes &amp; encoder pickup</h2>
-<p>Press/hold <b>Mode</b> and press <b>Function (DAW)</b> to switch DAW Mixer ↔ DAW Control, then exit mode selection. Other device modes are not mapped.</p>
-<p>A confirmed change of mode re-arms pickup. AP’s reported EQ/filter positions are sent back to the endless encoders over the DAW output, so they can start from the current value rather than jump blindly. <b>No position feedback → no EQ/filter output.</b></p>
-<p><b>Function alone</b> toggles the bottom row Hot Cues ↔ Mixer without changing the EQ/filter mode or encoder pickup. Track ◀/▶ selects Deck 1–4 for hot cues, independently of FLX4. The screen shows deck/layer; arrows stop at the ends.</p>
-<p>Knobs and Mixer-layer buttons remain fixed to <b>CH1–4</b>, regardless of either controller’s deck selection. These are AP’s main mixer channels, not arrangement-internal trims.</p>
-</section>
-<section class="topic"><h2>Browser &amp; button behaviour</h2>
-<p><b>Top encoder 8:</b> clockwise moves Down; anticlockwise moves Up. The bridge recentres its absolute value after turns for continuous browsing. After a mode change, the first non-echo report establishes a baseline and may consume the first turn.</p>
-<p>Matching reports can be suppressed within a 500 ms echo window, including an identical physical report. This is not a MIDI acknowledgment guarantee.</p>
-<p><b>Hot Cues:</b> one tap per press, no held preview. Colours match the supplied Candy Pop palette, but do not show cue existence or follow later AP colour changes. Empty slots can create cues; AP’s existing CueMomentary/Slip settings are not changed. Track routes can act as arrangement markers, not clip/sampler cues.</p>
-<p><b>Mixer-layer Mute / headphone Cue:</b> a press sends the opposite of AP’s confirmed 0/1 state. LEDs follow feedback, not a guessed local toggle. Grey/unknown means the bridge will not guess a switch state.</p>
-<p>LC3 has no mapped Browser Enter, Back or Load. Use AP or the FLX4 for those actions.</p>
-</section>
-<div class="rule"><b>FILTER ROUTES ARE NOT CONFIRMED.</b><br><code>/AutoPilot/Mixer/CHn/Filter1</code> and <code>Filter2</code> are inferred from AP’s 0.1.845 change note and mixer path convention. Missing feedback blocks pickup; feedback alone does not prove the input route is writable.</div>
-<section class="topic"><h2>If controls do nothing</h2>
-<p>Check the console mode, DAW input <b>and</b> output selection, AP feedback destination/subscriptions, and Browser CONTROL MODE. The bridge does not configure AP for you.</p>
-<p>Keep the console open. <b>Ctrl+C</b> requests standalone mode and releases held actions best-effort. Device attach/detach is handled while running; check console errors. Restart after restarting AP or uncertain state. Force-kills and UDP loss cannot guarantee cleanup.</p>
-</section>
 </div>
+<div class="references"><b>References:</b> <a href="README.md">setup</a> · <a href="MAPPING.md#launch-control-3-compact-daw-usb-ports">complete LC3 operation</a> · <a href="profiles/launch-control-3.json">editable profile</a> · <a href="PROFILES.md">schema</a> · <a href="https://autopilot.audio/user-guide/index.html?c=c14">Syndicate guide §§14.2, 14.9–14.10; recent changes 0.1.901–0.1.903</a>. <b>Scope:</b> bundled layout; hardware and Syndicate end-to-end operation unverified. Edited profiles may differ.</div>
 </div>
-<div class="references"><b>Local references:</b> <a href="README.md">README.md</a> → Get started / Supported mappings / Limits; <a href="profiles/launch-control-3.json">profiles/launch-control-3.json</a> → adapter: modes / layers / deck_feedback / bindings / feedback; <a href="PROFILES.md">PROFILES.md</a> → Declarative JSON / Protocol references.<br><b>Scope:</b> current default profile. Hardware and AP end-to-end operation remain unverified. Edited profiles may differ from this sheet.</div>
-</div>
-<footer><span>Independent project · Not affiliated with Novation / AlphaTheta / AUTO/PILOT</span><span>Setup reference · Feedback required · 2 / 2</span></footer>
+<footer><span>Independent project · Not affiliated with Novation / AlphaTheta / Syndicate</span><span>Setup reference · Feedback required · 4 / 4</span></footer>
 </section>
 </body>
 </html>

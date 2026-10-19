@@ -1,13 +1,15 @@
 //! DDJ-FLX4 MIDI protocol capability. MIDI decoding lives here;
 //! AP assignments and pad banks live in `profiles/flx4.json`.
 mod config;
+mod fx;
 mod pads;
 
 use super::Adapter;
-use crate::ap::{FeedbackKind, Player, SharedAp, SlipTiming};
+use crate::ap::{Ap, FeedbackKind, Player, SharedAp, SlipTiming};
 use anyhow::{anyhow, bail, Context, Result};
 pub use config::Config;
 use config::{LedKind, SideBehavior};
+use fx::Fx;
 use midir::MidiOutputConnection;
 use pads::Action;
 use rosc::OscType;
@@ -54,6 +56,7 @@ pub struct Flx4 {
     cfg: Config,
     outputs: Vec<MidiOutputConnection>,
     ap: SharedAp,
+    fx: Option<Fx>,
     selected: [usize; 2],
     banks: [usize; 4],
     players: [Player; 4],
@@ -115,15 +118,21 @@ impl Flx4 {
         for deck in 0..4 {
             ap.borrow_mut().register(
                 &name,
-                &format!("/AutoPilot/Deck/{}/PlayerType", deck + 1),
+                &format!("/Syndicate/Deck/{}/PlayerType", deck + 1),
                 FeedbackKind::Text,
             )?;
         }
+        let fx = cfg
+            .fx
+            .clone()
+            .map(|config| Fx::new(config, ap.clone(), name.clone()))
+            .transpose()?;
         Ok(Self {
             name,
             cfg,
             outputs,
             ap,
+            fx,
             selected: [0, 1],
             banks: [0; 4],
             players: [Player::Unknown; 4],
@@ -156,14 +165,14 @@ impl Flx4 {
         format!("{}:{}:note:{}:{}", self.name, key.0, key.1, key.2)
     }
     fn route(&mut self, address: String) -> Option<String> {
-        let Some(rest) = address.strip_prefix("/AutoPilot/Deck/") else {
+        let Some(rest) = address.strip_prefix("/Syndicate/Deck/") else {
             return Some(address);
         };
         let (number, route) = rest.split_once('/')?;
         let deck = number.parse::<usize>().ok()?.checked_sub(1)?;
         let player = *self.players.get(deck)?;
         match player.route(route) {
-            Some(route) => Some(format!("/AutoPilot/Deck/{}/{route}", deck + 1)),
+            Some(route) => Some(format!("/Syndicate/Deck/{}/{route}", deck + 1)),
             None => {
                 self.warn(format!("Deck {} ({player:?}): {route} unavailable; check PlayerType feedback or player layout", deck + 1));
                 None
@@ -254,11 +263,14 @@ impl Flx4 {
     }
     fn select_deck(&mut self, side: usize) -> Result<()> {
         self.selected[side] ^= 2;
+        if let Some(fx) = &mut self.fx {
+            fx.selection_changed(self.selected);
+        }
         let keys = self.analog_keys(side, false);
         self.rearm(&keys);
         self.mode_feedback(side)?;
         self.refresh_leds(side)?;
-        self.send("/AutoPilot/Feedback/Resend", OscType::Int(1))
+        self.send("/Syndicate/Feedback/Resend", OscType::Int(1))
     }
     fn shift(&mut self, side: usize, on: bool) -> Result<()> {
         if self.shifts[side] == on {
@@ -267,7 +279,7 @@ impl Flx4 {
         self.shifts[side] = on;
         let keys = self.analog_keys(side, true);
         self.rearm(&keys);
-        self.send("/AutoPilot/Feedback/Resend", OscType::Int(1))
+        self.send("/Syndicate/Feedback/Resend", OscType::Int(1))
     }
     fn button(&mut self, key: Key, channel: u8, raw: u8) -> Result<()> {
         let Some(binding) = self
@@ -364,13 +376,21 @@ impl Flx4 {
             return Ok(());
         };
         let identity = (key, address.to_ascii_lowercase());
+        if !self.ap.borrow().control_available(&address) {
+            self.captured.remove(&identity);
+            self.positions.remove(&key);
+            self.warn(format!(
+                "Tempo control blocked at {address}: AP must report TempoSliderEnabled=1"
+            ));
+            return Ok(());
+        }
         let position = full as f32 / 16383.0;
         let direct = binding.direct;
         let owner = format!("{}:{}:cc:{}:{}", self.name, port, channel, base);
         if !direct && !self.ap.borrow().control_owned(&owner, &address) {
             self.captured.remove(&identity);
         }
-        if !direct && self.ap.borrow().control_pending(&owner, &address) {
+        if !direct && self.ap.borrow_mut().control_pending(&owner, &address) {
             self.warn(format!("Pickup waiting at {address}: another physical control wrote it; awaiting AP feedback"));
             return Ok(());
         }
@@ -451,6 +471,11 @@ impl Adapter for Flx4 {
         if port != 0 || bytes.len() != 3 || bytes[1] > 127 || bytes[2] > 127 {
             return Ok(());
         }
+        if let Some(fx) = &mut self.fx {
+            if fx.input(bytes, self.selected, self.shifts)? {
+                return Ok(());
+            }
+        }
         let (kind, channel, number, value) = (bytes[0] & 0xf0, bytes[0] & 15, bytes[1], bytes[2]);
         if kind == 0xb0 {
             return self.cc(port, channel, number, value);
@@ -501,7 +526,7 @@ impl Adapter for Flx4 {
     }
     fn feedback(&mut self, addresses: &[&str]) -> Result<()> {
         for deck in 0..4 {
-            let address = format!("/autopilot/deck/{}/playertype", deck + 1);
+            let address = format!("/syndicate/deck/{}/playertype", deck + 1);
             if addresses.contains(&address.as_str()) {
                 let player = self
                     .ap
@@ -512,13 +537,34 @@ impl Adapter for Flx4 {
                 if self.players[deck] != player {
                     self.players[deck] = player;
                     self.captured.retain(|(_, route)| {
-                        route != &format!("/autopilot/deck/{}/temposlider", deck + 1)
+                        route != &format!("/syndicate/deck/{}/temposlider", deck + 1)
                     });
                 }
             }
         }
         {
             let ap = self.ap.borrow();
+            // Availability transitions discard both capture and movement history;
+            // a fader moved while disabled cannot jump on re-enable. Snapshot
+            // repeats are filtered by AP so they do not continually re-arm it.
+            for binding in &self.cfg.analog {
+                let side = binding.side.unwrap_or(if binding.channel <= 1 {
+                    binding.channel as usize
+                } else {
+                    0
+                });
+                for route in std::iter::once(&binding.address).chain(binding.shifted_address.iter())
+                {
+                    let address = resolved(route, self.selected[side]).to_ascii_lowercase();
+                    if Ap::availability_address(&address).is_some_and(|enabled| {
+                        addresses.contains(&enabled.to_ascii_lowercase().as_str())
+                    }) {
+                        let key = (0, binding.channel, binding.cc);
+                        self.positions.remove(&key);
+                        self.captured.remove(&(key, address));
+                    }
+                }
+            }
             let name = &self.name;
             // Latch pickup, as in the original FLX4 bridge. AP feedback has no
             // writer identity and can lag several physical reports: disagreement
@@ -527,6 +573,7 @@ impl Adapter for Flx4 {
             self.captured.retain(|((port, channel, base), route)| {
                 !addresses.contains(&route.as_str())
                     || (ap.value(route).is_some()
+                        && ap.control_available(route)
                         && ap.control_owned(&format!("{name}:{port}:cc:{channel}:{base}"), route))
             });
         }
@@ -541,7 +588,7 @@ impl Adapter for Flx4 {
             let timing = self
                 .ap
                 .borrow()
-                .slip_selected(&format!("/AutoPilot/Deck/{}", deck + 1));
+                .slip_selected(&format!("/Syndicate/Deck/{}", deck + 1));
             format!(
                 "{}: Deck {} {:?} / {} / Repeat {:?}",
                 if i == 0 { "LEFT" } else { "RIGHT" },
@@ -552,6 +599,9 @@ impl Adapter for Flx4 {
             )
         };
         let mut status = format!("{} | {}", side(0), side(1));
+        if let Some(fx) = &self.fx {
+            status.push_str(&format!(" | {}", fx.status()));
+        }
         if verbose {
             status.push_str(&format!(
                 " | pickup={}/{}",

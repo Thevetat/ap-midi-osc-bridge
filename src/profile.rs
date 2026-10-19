@@ -100,6 +100,27 @@ pub enum MidiKind {
     Cc,
 }
 
+/// A single software layer or a nonempty set of layers sharing one mapping.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum LayerScope {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl LayerScope {
+    pub fn names(&self) -> &[String] {
+        match self {
+            Self::One(name) => std::slice::from_ref(name),
+            Self::Many(names) => names,
+        }
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.names().iter().any(|layer| layer == name)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Binding {
@@ -110,7 +131,7 @@ pub struct Binding {
     #[serde(default)]
     pub mode: Option<String>,
     #[serde(default)]
-    pub layer: Option<String>,
+    pub layer: Option<LayerScope>,
     /// Optional exact button press value (e.g. 127, excluding LED colour echoes).
     #[serde(default)]
     pub press_value: Option<u8>,
@@ -130,6 +151,11 @@ pub enum Behavior {
         #[serde(default)]
         release: Option<i32>,
     },
+    /// One-shot unit macro write on press; release has no action.
+    MacroButton {
+        address: String,
+        value: f32,
+    },
     /// Toggle only using AP's confirmed switch value.
     Toggle {
         address: String,
@@ -141,6 +167,10 @@ pub enum Behavior {
         bipolar: bool,
         #[serde(default = "yes")]
         pickup: bool,
+    },
+    /// Output-only unit CC: physical movement to exactly zero is required to arm.
+    AbsoluteDryHome {
+        address: String,
     },
     /// MSB at number, LSB at number+32, same MIDI channel. A fresh MSB is required per LSB.
     #[serde(rename = "absolute_14")]
@@ -202,7 +232,7 @@ pub struct Feedback {
     #[serde(default)]
     pub mode: Option<String>,
     #[serde(default)]
-    pub layer: Option<String>,
+    pub layer: Option<LayerScope>,
     pub output: usize,
     /// Input port that can echo the outgoing message. Single-input devices infer port 0.
     #[serde(default)]
@@ -216,7 +246,7 @@ pub struct Feedback {
 }
 
 pub fn valid_address(address: &str) -> bool {
-    if !address.starts_with("/AutoPilot/") || address.chars().any(char::is_whitespace) {
+    if !address.starts_with("/Syndicate/") || address.chars().any(char::is_whitespace) {
         return false;
     }
     let expanded = address.replace("{deck}", "1");
@@ -272,7 +302,9 @@ impl DeclarativeConfig {
         }
         let mut layers = HashSet::new();
         for layer in &self.layers {
-            if layer.name.trim().is_empty() || layer.name.len() > 80 || !layers.insert(&layer.name)
+            if layer.name.trim().is_empty()
+                || layer.name.len() > 80
+                || !layers.insert(layer.name.clone())
             {
                 bail!("Layer name must be unique and 1..80 bytes");
             }
@@ -349,7 +381,7 @@ impl DeclarativeConfig {
                 || !valid_control(binding.channel, binding.number)
                 || binding.deck_side > 3
                 || binding.mode.as_ref().is_some_and(|m| !modes.contains(m))
-                || binding.layer.as_ref().is_some_and(|l| !layers.contains(l))
+                || !valid_layer_scope(&binding.layer, &layers)
             {
                 bail!("Invalid binding input/channel/number/deck_side/mode/layer");
             }
@@ -358,6 +390,7 @@ impl DeclarativeConfig {
                     || !matches!(
                         binding.behavior,
                         Behavior::Button { .. }
+                            | Behavior::MacroButton { .. }
                             | Behavior::Toggle { .. }
                             | Behavior::SelectDeck { .. }
                             | Behavior::StepDeck { .. }
@@ -380,7 +413,7 @@ impl DeclarativeConfig {
                 if controls.iter().any(|(previous, mode, layer)| {
                     *previous == identity
                         && scopes_overlap(mode, &binding.mode)
-                        && scopes_overlap(layer, &binding.layer)
+                        && layers_overlap(layer, &binding.layer)
                 }) {
                     bail!(
                         "Overlapping MIDI binding at input {} channel {} number {number}",
@@ -392,8 +425,10 @@ impl DeclarativeConfig {
             }
             let addresses: Vec<&str> = match &binding.behavior {
                 Behavior::Button { address, .. }
+                | Behavior::MacroButton { address, .. }
                 | Behavior::Toggle { address }
                 | Behavior::Absolute { address, .. }
+                | Behavior::AbsoluteDryHome { address }
                 | Behavior::Absolute14 { address, .. } => vec![address],
                 Behavior::Relative { up, down } | Behavior::Recenter { up, down, .. } => {
                     vec![up, down]
@@ -429,15 +464,31 @@ impl DeclarativeConfig {
                 bail!("Declarative bindings do not yet support slip timing/ownership; use a protocol capability");
             }
             match &binding.behavior {
-                Behavior::Button { .. } | Behavior::Toggle { .. } | Behavior::SelectDeck { .. } => {
-                }
+                Behavior::Button { .. }
+                | Behavior::MacroButton { .. }
+                | Behavior::Toggle { .. }
+                | Behavior::SelectDeck { .. } => {}
                 Behavior::Absolute { .. }
+                | Behavior::AbsoluteDryHome { .. }
                 | Behavior::Relative { .. }
                 | Behavior::Recenter { .. }
                 | Behavior::Absolute14 { .. }
                     if binding.kind != MidiKind::Cc =>
                 {
                     bail!("Analog behavior requires CC input")
+                }
+                _ => {}
+            }
+            match &binding.behavior {
+                Behavior::AbsoluteDryHome { address } if !valid_macro_address(address) => {
+                    bail!("absolute_dry_home requires /Syndicate/Mixer/CH1..4/FX/Macro/1..8 (CH{{deck}} allowed)");
+                }
+                Behavior::MacroButton { address, value }
+                    if !valid_macro_address(address)
+                        || !value.is_finite()
+                        || !(0.0..=1.0).contains(value) =>
+                {
+                    bail!("macro_button requires a CH1..4 FX Macro1..8 address and finite value in 0..1");
                 }
                 _ => {}
             }
@@ -458,7 +509,7 @@ impl DeclarativeConfig {
                 || f.deck_side > 3
                 || !valid_address(&f.address)
                 || f.mode.as_ref().is_some_and(|m| !modes.contains(m))
-                || f.layer.as_ref().is_some_and(|l| !layers.contains(l))
+                || !valid_layer_scope(&f.layer, &layers)
             {
                 bail!("Invalid feedback address/output/control/mode/layer");
             }
@@ -466,7 +517,7 @@ impl DeclarativeConfig {
             if destinations.iter().any(|(previous, mode, layer)| {
                 *previous == identity
                     && scopes_overlap(mode, &f.mode)
-                    && scopes_overlap(layer, &f.layer)
+                    && layers_overlap(layer, &f.layer)
             }) {
                 bail!(
                     "Overlapping feedback MIDI destination at output {} channel {} number {}",
@@ -476,6 +527,18 @@ impl DeclarativeConfig {
                 );
             }
             destinations.push((identity, f.mode.clone(), f.layer.clone()));
+            if matches!(f.render, FeedbackKind::Position {})
+                && self.bindings.iter().any(|b| match &b.behavior {
+                    Behavior::AbsoluteDryHome { address } => (1..=4).any(|deck| {
+                        address
+                            .replace("{deck}", &deck.to_string())
+                            .eq_ignore_ascii_case(&f.address.replace("{deck}", &deck.to_string()))
+                    }),
+                    _ => false,
+                })
+            {
+                bail!("absolute_dry_home cannot have Position feedback");
+            }
             if matches!(f.render, FeedbackKind::Position {}) && f.midi_kind != MidiKind::Cc {
                 bail!("Position feedback requires a CC output");
             }
@@ -524,6 +587,9 @@ impl DeclarativeConfig {
                         crate::ap::FeedbackKind::Unit
                     },
                 ),
+                Behavior::AbsoluteDryHome { address } | Behavior::MacroButton { address, .. } => {
+                    add(address, crate::ap::FeedbackKind::Unit)
+                }
                 Behavior::Toggle { address } => add(address, crate::ap::FeedbackKind::Switch),
                 _ => {}
             }
@@ -559,6 +625,40 @@ impl DeclarativeConfig {
 }
 fn scopes_overlap(a: &Option<String>, b: &Option<String>) -> bool {
     a.is_none() || b.is_none() || a == b
+}
+
+fn valid_layer_scope(scope: &Option<LayerScope>, declared: &HashSet<String>) -> bool {
+    scope.as_ref().is_none_or(|scope| {
+        let names = scope.names();
+        names.len() <= 16
+            && !names.is_empty()
+            && names.iter().all(|name| declared.contains(name))
+            && names.iter().collect::<HashSet<_>>().len() == names.len()
+    })
+}
+
+fn layers_overlap(a: &Option<LayerScope>, b: &Option<LayerScope>) -> bool {
+    a.as_ref()
+        .zip(b.as_ref())
+        .is_none_or(|(a, b)| a.names().iter().any(|name| b.contains(name)))
+}
+
+fn valid_macro_address(address: &str) -> bool {
+    let valid = |address: &str| {
+        let Some(rest) = address.strip_prefix("/Syndicate/Mixer/CH") else {
+            return false;
+        };
+        let Some((channel, macro_number)) = rest.split_once("/FX/Macro/") else {
+            return false;
+        };
+        matches!(channel, "1" | "2" | "3" | "4")
+            && matches!(macro_number, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8")
+    };
+    if address.contains("{deck}") {
+        (1..=4).all(|deck| valid(&address.replace("{deck}", &deck.to_string())))
+    } else {
+        valid(address)
+    }
 }
 
 fn valid_control(channel: u8, number: u8) -> bool {

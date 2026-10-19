@@ -377,7 +377,7 @@ fn reconcile(
     }
     if attached {
         ap.borrow()
-            .send("/AutoPilot/Feedback/Resend", OscType::Int(1))?;
+            .send("/Syndicate/Feedback/Resend", OscType::Int(1))?;
     }
     Ok(())
 }
@@ -407,6 +407,7 @@ pub fn run(
     profile_dir: &Path,
     destination: SocketAddr,
     feedback: SocketAddr,
+    osc_root: &str,
     verbose: bool,
     running: Arc<AtomicBool>,
 ) -> Result<()> {
@@ -420,9 +421,10 @@ pub fn run(
     let ap: SharedAp = Rc::new(RefCell::new(Ap::new(
         socket.try_clone()?,
         destination,
+        osc_root,
         verbose,
-    )));
-    println!("OSC → {destination} | feedback ← {feedback}. Waiting for matching MIDI devices; Ctrl+C exits.");
+    )?));
+    println!("OSC → {destination} (root {osc_root}) | feedback ← {feedback}. Waiting for matching MIDI devices; Ctrl+C exits.");
     let result = event_loop(&mut entries, &socket, &ap, destination, verbose, &running);
     for entry in &mut entries {
         entry.detach(&ap);
@@ -534,6 +536,7 @@ fn event_loop(
                 Err(e) => return Err(e).context("Receive AP feedback"),
             }
         }
+        ap.borrow_mut().refresh_pending_controls()?;
         if last_status.elapsed() >= Duration::from_secs(5) {
             for entry in entries.iter_mut() {
                 entry.report(verbose);

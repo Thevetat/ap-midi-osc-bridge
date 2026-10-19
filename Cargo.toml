@@ -2,7 +2,7 @@
 name = "ap-midi-osc-bridge"
 version = "0.3.4"
 edition = "2021"
-description = "Profile-driven MIDI to AUTO/PILOT OSC bridge"
+description = "Profile-driven MIDI to Syndicate OSC bridge"
 license = "MIT"
 repository = "https://github.com/Thevetat/ap-midi-osc-bridge"
 

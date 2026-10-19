@@ -1,8 +1,8 @@
 //! Declarative per-device decoder. All AP values and switch/hold arbitration live in SharedAp.
 use super::Adapter;
 use crate::{
-    ap::SharedAp,
-    profile::{Behavior, Binding, DeclarativeConfig, FeedbackKind, MidiKind},
+    ap::{Ap, SharedAp},
+    profile::{Behavior, Binding, DeclarativeConfig, FeedbackKind, LayerScope, MidiKind},
 };
 use anyhow::{anyhow, Result};
 use midir::MidiOutputConnection;
@@ -28,6 +28,9 @@ pub struct Declarative {
     msb: HashMap<Physical, u8>,
     positions: HashMap<(Physical, String), f32>,
     captured: HashSet<(Physical, String)>,
+    dry_positions: HashMap<(Physical, String), u8>,
+    dry_armed: HashSet<(Physical, String)>,
+    dry_foreign_seen: HashSet<(Physical, String)>,
     sent: HashMap<(usize, u8, u8), u8>,
     echoes: HashMap<(usize, u8, u8), VecDeque<(u8, Instant)>>,
     recenter_seen: HashSet<Physical>,
@@ -65,6 +68,9 @@ impl Declarative {
             msb: HashMap::new(),
             positions: HashMap::new(),
             captured: HashSet::new(),
+            dry_positions: HashMap::new(),
+            dry_armed: HashSet::new(),
+            dry_foreign_seen: HashSet::new(),
             sent: HashMap::new(),
             echoes: HashMap::new(),
             recenter_seen: HashSet::new(),
@@ -145,12 +151,12 @@ impl Declarative {
             .map_or(true, |m| self.mode.as_ref() == Some(m))
     }
 
-    fn active_layer(&self, layer: &Option<String>) -> bool {
-        layer.as_ref().is_none_or(|name| {
+    fn active_layer(&self, layer: &Option<LayerScope>) -> bool {
+        layer.as_ref().is_none_or(|scope| {
             self.profile
                 .layers
                 .get(self.layer)
-                .is_some_and(|l| &l.name == name)
+                .is_some_and(|l| scope.contains(&l.name))
         })
     }
 
@@ -186,30 +192,46 @@ impl Declarative {
         self.refresh()?;
         self.ap
             .borrow_mut()
-            .send("/AutoPilot/Feedback/Resend", OscType::Int(1))?;
+            .send("/Syndicate/Feedback/Resend", OscType::Int(1))?;
         Ok(())
     }
 
     fn cycle_layer(&mut self) -> Result<()> {
-        self.layer = (self.layer + 1) % self.profile.layers.len();
-        // Only layer-scoped controls need re-arming. Fixed EQ/filter encoders
-        // must not be disturbed when the bottom button row changes function.
+        let old = &self.profile.layers[self.layer].name;
+        let next = (self.layer + 1) % self.profile.layers.len();
+        let new = &self.profile.layers[next].name;
+        // Keep shared scopes captured (e.g. EQ across hot_cues and mixer).
+        // Only controls entering or leaving the scope lose their baseline.
         let affected: HashSet<_> = self
             .profile
             .bindings
             .iter()
-            .filter(|b| b.layer.is_some())
+            .filter(|b| {
+                b.layer
+                    .as_ref()
+                    .is_some_and(|scope| scope.contains(old) != scope.contains(new))
+            })
             .map(|b| (b.input, b.kind, b.channel, b.number))
             .collect();
+        let changed_feedback: Vec<_> = self
+            .profile
+            .feedback
+            .iter()
+            .filter(|f| {
+                f.layer
+                    .as_ref()
+                    .is_some_and(|scope| scope.contains(old) != scope.contains(new))
+            })
+            .map(|f| (f.output, f.midi_kind, f.channel, f.number))
+            .collect();
+        self.layer = next;
         self.rearm_controls(&affected);
-        for f in &self.profile.feedback {
-            if f.layer.is_some() {
-                let status = (match f.midi_kind {
-                    MidiKind::Note => 0x90,
-                    MidiKind::Cc => 0xb0,
-                }) | (f.channel - 1);
-                self.sent.remove(&(f.output, status, f.number));
-            }
+        for (output, kind, channel, number) in changed_feedback {
+            let status = (match kind {
+                MidiKind::Note => 0x90,
+                MidiKind::Cc => 0xb0,
+            }) | (channel - 1);
+            self.sent.remove(&(output, status, number));
         }
         // Keep pressed/held identities: changing layer must never retrigger a
         // held button or redirect its eventual release to the new layer.
@@ -328,6 +350,9 @@ impl Declarative {
         self.msb.clear();
         self.positions.clear();
         self.captured.clear();
+        self.dry_positions.clear();
+        self.dry_armed.clear();
+        self.dry_foreign_seen.clear();
         self.sent.clear();
         self.echoes.clear();
         self.recenter_seen.clear();
@@ -346,6 +371,11 @@ impl Declarative {
         self.msb.retain(|key, _| !affected.contains(key));
         self.positions.retain(|(key, _), _| !affected.contains(key));
         self.captured.retain(|(key, _)| !affected.contains(key));
+        self.dry_positions
+            .retain(|(key, _), _| !affected.contains(key));
+        self.dry_armed.retain(|(key, _)| !affected.contains(key));
+        self.dry_foreign_seen
+            .retain(|(key, _)| !affected.contains(key));
         self.recenter_seen.retain(|key| !affected.contains(key));
     }
 
@@ -358,8 +388,10 @@ impl Declarative {
                 b.deck_side == side
                     && match &b.behavior {
                         Behavior::Button { address, .. }
+                        | Behavior::MacroButton { address, .. }
                         | Behavior::Toggle { address }
                         | Behavior::Absolute { address, .. }
+                        | Behavior::AbsoluteDryHome { address }
                         | Behavior::Absolute14 { address, .. } => address.contains("{deck}"),
                         Behavior::Relative { up, down } | Behavior::Recenter { up, down, .. } => {
                             up.contains("{deck}") || down.contains("{deck}")
@@ -404,6 +436,14 @@ impl Declarative {
         tolerance: f32,
     ) -> Result<()> {
         let identity = (key, address.to_ascii_lowercase());
+        if !self.ap.borrow().control_available(&address) {
+            self.captured.remove(&identity);
+            self.positions.remove(&identity);
+            self.warn(format!(
+                "Tempo control blocked at {address}: AP must report TempoSliderEnabled=1"
+            ));
+            return Ok(());
+        }
         let previous = self.positions.insert(identity.clone(), position);
         // Reports at startup (or following a mode/deck switch) establish a baseline,
         // not movement. An unchanged position also cannot seize an AP parameter.
@@ -414,7 +454,7 @@ impl Declarative {
         if pickup && !self.ap.borrow().control_owned(&owner, &address) {
             self.captured.remove(&identity);
         }
-        if pickup && self.ap.borrow().control_pending(&owner, &address) {
+        if pickup && self.ap.borrow_mut().control_pending(&owner, &address) {
             self.warn(format!("Pickup waiting at {address}: another physical control wrote it; awaiting AP feedback"));
             return Ok(());
         }
@@ -448,6 +488,39 @@ impl Declarative {
         Ok(())
     }
 
+    fn absolute_dry_home(&mut self, key: Physical, address: String, value: u8) -> Result<()> {
+        let identity = (key, address.to_ascii_lowercase());
+        let owner = self.owner(key);
+        // A different bridge writer means our former dry arming is no longer safe.
+        // Reset just once per takeover, not on every report from this encoder.
+        if !self.ap.borrow().control_owned(&owner, &address)
+            && self.dry_foreign_seen.insert(identity.clone())
+        {
+            self.dry_positions.remove(&identity);
+            self.dry_armed.remove(&identity);
+        }
+        let previous = self.dry_positions.insert(identity.clone(), value);
+        let Some(_) = previous.filter(|previous| *previous != value) else {
+            return Ok(());
+        };
+        let arming = !self.dry_armed.contains(&identity);
+        if arming && value != 0 {
+            return Ok(());
+        }
+        // A physical transition to exactly zero, never a startup snapshot,
+        // explicitly takes ownership without relying on nonexistent AP echo.
+        self.ap.borrow_mut().send_control(
+            &owner,
+            &address,
+            OscType::Float(value as f32 / 127.0),
+        )?;
+        if arming {
+            self.dry_armed.insert(identity.clone());
+        }
+        self.dry_foreign_seen.remove(&identity);
+        Ok(())
+    }
+
     fn apply(&mut self, key: Physical, binding: Binding, value: u8) -> Result<()> {
         match binding.behavior {
             Behavior::Button {
@@ -467,6 +540,18 @@ impl Declarative {
                         .hold(&owner, &address, press, release)?;
                 } else {
                     self.ap.borrow_mut().send(&address, OscType::Int(press))?;
+                }
+            }
+            Behavior::MacroButton {
+                address,
+                value: target,
+            } => {
+                if value != 0 {
+                    let address = self.resolve(&address, binding.deck_side);
+                    let owner = self.owner(key);
+                    self.ap
+                        .borrow_mut()
+                        .send_control(&owner, &address, OscType::Float(target))?;
                 }
             }
             Behavior::Toggle { address } => {
@@ -506,6 +591,10 @@ impl Declarative {
                     pickup,
                     1.0 / 127.0,
                 )?;
+            }
+            Behavior::AbsoluteDryHome { address } => {
+                let address = self.resolve(&address, binding.deck_side);
+                self.absolute_dry_home(key, address, value)?;
             }
             Behavior::Absolute14 {
                 address,
@@ -583,6 +672,9 @@ impl Declarative {
 
 impl Adapter for Declarative {
     fn start(&mut self) -> Result<()> {
+        self.dry_positions.clear();
+        self.dry_armed.clear();
+        self.dry_foreign_seen.clear();
         let hooks = self.profile.startup.clone();
         self.hooks(&hooks)?;
         self.last_tick = Instant::now();
@@ -628,6 +720,12 @@ impl Adapter for Declarative {
             pending.retain(|(_, when)| when.elapsed() < Duration::from_millis(500));
             if let Some(index) = pending.iter().position(|(expected, _)| *expected == value) {
                 pending.remove(index);
+                // Host output is never human movement. Re-arm dry-home as well
+                // as its baseline: an encoder moved by a delayed host report
+                // must not retain permission to jump a macro on the next turn.
+                self.dry_positions
+                    .retain(|(physical, _), _| *physical != key);
+                self.dry_armed.retain(|(physical, _)| *physical != key);
                 return Ok(());
             }
         }
@@ -669,6 +767,7 @@ impl Adapter for Declarative {
         if matches!(
             &binding.behavior,
             Behavior::Button { .. }
+                | Behavior::MacroButton { .. }
                 | Behavior::Toggle { .. }
                 | Behavior::SelectDeck { .. }
                 | Behavior::StepDeck { .. }
@@ -710,13 +809,24 @@ impl Adapter for Declarative {
                     _ => continue,
                 };
                 let address = self.resolve(target, b.deck_side).to_ascii_lowercase();
-                if !addresses.contains(&address.as_str()) {
+                let availability_changed =
+                    Ap::availability_address(&address).is_some_and(|enabled| {
+                        addresses.contains(&enabled.to_ascii_lowercase().as_str())
+                    });
+                if !availability_changed && !addresses.contains(&address.as_str()) {
                     continue;
                 }
                 let key = (b.input, b.kind, b.channel, b.number);
+                if availability_changed {
+                    self.positions.remove(&(key, address.clone()));
+                }
                 // Keep capture through delayed reports. Invalidate all affected
                 // controls before refresh synchronizes endless encoders once.
-                if ap.value(&address).is_none() || !ap.control_owned(&self.owner(key), &address) {
+                if availability_changed
+                    || !ap.control_available(&address)
+                    || ap.value(&address).is_none()
+                    || !ap.control_owned(&self.owner(key), &address)
+                {
                     self.captured.remove(&(key, address));
                 }
             }
@@ -743,6 +853,9 @@ impl Adapter for Declarative {
     }
 
     fn cleanup(&mut self) {
+        self.dry_positions.clear();
+        self.dry_armed.clear();
+        self.dry_foreign_seen.clear();
         for (_, owner) in std::mem::take(&mut self.held) {
             if let Err(e) = self.ap.borrow_mut().release(&owner) {
                 eprintln!("{}: release: {e}", self.name);

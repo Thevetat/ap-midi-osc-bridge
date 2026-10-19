@@ -1,4 +1,5 @@
 //! FLX4-specific configuration and preflight validation.
+use super::fx::FxConfig;
 use super::pads::{Action, Pads};
 use crate::profile::valid_address;
 use anyhow::{bail, Result};
@@ -79,6 +80,8 @@ pub struct Config {
     pub(super) buttons: Vec<SideButton>,
     pub(super) analog: Vec<Analog>,
     pub(super) browser_encoder: Encoder,
+    #[serde(default)]
+    pub(super) fx: Option<FxConfig>,
     pub(super) leds: Vec<Led>,
     pub(super) pads: Pads,
     pub(super) pad_wiring: PadWiring,
@@ -90,6 +93,12 @@ impl Config {
             bail!("FLX4 requires exactly one input and one output");
         }
         self.pads.validate()?;
+        if let Some(fx) = &self.fx {
+            fx.validate()?;
+            if self.browser_encoder.channel == 4 && matches!(self.browser_encoder.cc, 0x02 | 0x22) {
+                bail!("FLX4 browser encoder conflicts with FX LEVEL/DEPTH CC 2/34 on channel 4");
+            }
+        }
         if self.buttons.len() > 512 || self.analog.len() > 64 || self.leds.len() > 128 {
             bail!("FLX4 profile exceeds limits (512 buttons, 64 analog controls, 128 LEDs)");
         }

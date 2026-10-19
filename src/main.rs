@@ -17,7 +17,7 @@ use std::{
 };
 
 #[derive(Parser)]
-#[command(version, about = "MIDI to AUTO/PILOT OSC bridge")]
+#[command(version, about = "MIDI to Syndicate OSC bridge")]
 struct Options {
     /// List MIDI ports without opening them.
     #[arg(long)]
@@ -35,6 +35,7 @@ struct Options {
 struct Settings {
     osc: Option<SocketAddr>,
     feedback: Option<SocketAddr>,
+    osc_root: Option<String>,
 }
 
 fn app_directory() -> Result<PathBuf> {
@@ -85,6 +86,7 @@ fn run() -> Result<()> {
         &directory.join("profiles"),
         destination,
         feedback,
+        settings.osc_root.as_deref().unwrap_or("/Syndicate/"),
         options.verbose,
         running,
     )

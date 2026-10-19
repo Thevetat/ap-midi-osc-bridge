@@ -1,5 +1,7 @@
 # Repository streamlining plan
 
+> **Historical implementation record, not current setup or API guidance.** The phases and evidence below describe earlier revisions (including older AUTO/PILOT route names, guide-rendering state and a superseded proposal to absorb the standalone porting guide). For current Syndicate roots, mappings, schema and printable guides, use [README.md](README.md), [MAPPING.md](MAPPING.md), [PROFILES.md](PROFILES.md), [CONTROLLER-PORTING.md](CONTROLLER-PORTING.md) and the HTML/PDF guides. Historical claims below have not been retroactively rewritten.
+
 ## Objective
 
 Reduce duplicated rules, state and processing while preserving controller assignments, independent device lifecycles and shared AUTO/PILOT ownership. Prefer straightforward deletion and small local helpers over frameworks. Success is fewer independent code paths and clearer ownership, not an arbitrary LOC target.
