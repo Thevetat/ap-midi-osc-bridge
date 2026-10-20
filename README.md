@@ -26,6 +26,8 @@ A Windows installation can keep the executable and profiles in `%LOCALAPPDATA%\a
 
 Missing Syndicate feedback can block ordinary pickup/toggles; LC3 also needs a confirmed hardware mode report. FX wet controls instead require a physical dry-home gesture. See [operation and troubleshooting](MAPPING.md) before changing assignments.
 
+**BCR32 is not yet a supported plug-and-play device.** A [source-reviewed four-channel mixer draft](BCR32-MAPPING-DRAFT.md) and [editable preset-dependent profile template](drafts/bcr32.json) are available for owners to configure; neither is auto-loaded, and hardware behavior has not been confirmed.
+
 Control sheets: [LC3 HTML source](LAUNCH-CONTROL-3-GUIDE.html) · [LC3 printable PDF](LAUNCH-CONTROL-3-GUIDE.pdf) · [FLX4 HTML source](CONTROL-GUIDE.html) · [FLX4 printable PDF](CONTROL-GUIDE.pdf). HTML is the editable source; PDFs are rendered artifacts.
 
 Custom assignments belong in the JSON profiles. The bridge never changes Syndicate audio settings or controller firmware.
